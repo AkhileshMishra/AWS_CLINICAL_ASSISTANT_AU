@@ -1,6 +1,6 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 
-import config from '@/amplifyconfiguration.json';
+
 
 export type ApiConfig = {
     region: string;
@@ -35,7 +35,7 @@ async function getCredentials() {
  * @returns string
  */
 function getAmplifyRegion() {
-    return config?.aws_project_region || 'us-east-1';
+    return import.meta.env.VITE_AWS_REGION || 'ap-southeast-2';
 }
 
 /**

@@ -65,7 +65,7 @@ export default function Conversations() {
                 return;
             }
 
-            const listResults: MedicalScribeJobSummary[] = listHealthScribeJobsRsp.MedicalScribeJobSummaries;
+            const listResults: MedicalScribeJobSummary[] = listHealthScribeJobsRsp.MedicalScribeJobSummaries as any;
 
             // if NextToken is specified, append search results to existing results
             if (processedSearchFilter.NextToken) {

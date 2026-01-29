@@ -4,9 +4,9 @@ import { useAuthenticator } from '@aws-amplify/ui-react';
 import { Amplify } from 'aws-amplify';
 import { AuthUser } from 'aws-amplify/auth';
 
-import config from '@/amplifyconfiguration.json';
 
-Amplify.configure(config);
+
+
 
 type AuthContextType = {
     isUserAuthenticated: boolean;
@@ -17,7 +17,7 @@ type AuthContextType = {
 export const AuthContext = createContext<AuthContextType>({
     isUserAuthenticated: false,
     user: null,
-    signOut: () => {},
+    signOut: () => { },
 });
 
 export function useAuthContext() {

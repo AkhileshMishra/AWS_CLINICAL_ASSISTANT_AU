@@ -57,7 +57,7 @@ export default function Conversation() {
 
                 if (typeof medicalScribeJob === 'undefined') return;
                 if (Object.keys(medicalScribeJob).length > 0) {
-                    setJobDetails(medicalScribeJob);
+                    setJobDetails(medicalScribeJob as any);
                 }
 
                 // Get Transcript File from result S3 URL

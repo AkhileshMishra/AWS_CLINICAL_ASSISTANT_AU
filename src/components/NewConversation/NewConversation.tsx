@@ -14,23 +14,21 @@ import RadioGroup from '@cloudscape-design/components/radio-group';
 import SpaceBetween from '@cloudscape-design/components/space-between';
 import Spinner from '@cloudscape-design/components/spinner';
 import TokenGroup from '@cloudscape-design/components/token-group';
-
 import {
     ClinicalNoteGenerationSettings,
     MedicalScribeNoteTemplate,
     MedicalScribeParticipantRole,
-    StartMedicalScribeJobRequest,
 } from '@aws-sdk/client-transcribe';
 import { Progress } from '@aws-sdk/lib-storage';
 import dayjs from 'dayjs';
 
 import { useS3 } from '@/hooks/useS3';
 import { useNotificationsContext } from '@/store/notifications';
-import { startMedicalScribeJob } from '@/utils/HealthScribeApi';
+import { startMedicalScribeJob, StartMedicalScribeJobRequest } from '@/utils/HealthScribeApi';
 import { fileUpload } from '@/utils/S3Api';
 import sleep from '@/utils/sleep';
 
-import amplifyCustom from '../../aws-custom.json';
+
 import AudioRecorder from './AudioRecorder';
 import { AudioDropzone } from './Dropzone';
 import { AudioDetailSettings, AudioIdentificationType, InputName, NoteType } from './FormComponents';
@@ -108,32 +106,32 @@ export default function NewConversation() {
         const jobSettings =
             audioSelection === 'speakerPartitioning'
                 ? {
-                      Settings: {
-                          ClinicalNoteGenerationSettings: clinicalNoteGenerationSettings,
-                          MaxSpeakerLabels: audioDetails.speakerPartitioning.maxSpeakers,
-                          ShowSpeakerLabels: true,
-                      },
-                  }
+                    Settings: {
+                        ClinicalNoteGenerationSettings: clinicalNoteGenerationSettings,
+                        MaxSpeakerLabels: audioDetails.speakerPartitioning.maxSpeakers,
+                        ShowSpeakerLabels: true,
+                    },
+                }
                 : {
-                      Settings: {
-                          ChannelIdentification: true,
-                          ClinicalNoteGenerationSettings: clinicalNoteGenerationSettings,
-                      },
-                      ChannelDefinitions: [
-                          {
-                              ChannelId: 0,
-                              ParticipantRole: audioDetails.channelIdentification
-                                  .channel1 as MedicalScribeParticipantRole,
-                          },
-                          {
-                              ChannelId: 1,
-                              ParticipantRole:
-                                  audioDetails.channelIdentification.channel1 === 'CLINICIAN'
-                                      ? 'PATIENT'
-                                      : ('CLINICIAN' as MedicalScribeParticipantRole),
-                          },
-                      ],
-                  };
+                    Settings: {
+                        ChannelIdentification: true,
+                        ClinicalNoteGenerationSettings: clinicalNoteGenerationSettings,
+                    },
+                    ChannelDefinitions: [
+                        {
+                            ChannelId: 0,
+                            ParticipantRole: audioDetails.channelIdentification
+                                .channel1 as MedicalScribeParticipantRole,
+                        },
+                        {
+                            ChannelId: 1,
+                            ParticipantRole:
+                                audioDetails.channelIdentification.channel1 === 'CLINICIAN'
+                                    ? 'PATIENT'
+                                    : ('CLINICIAN' as MedicalScribeParticipantRole),
+                        },
+                    ],
+                };
 
         const uploadLocation = getUploadMetadata();
         const s3Location = {
@@ -143,7 +141,7 @@ export default function NewConversation() {
 
         const jobParams: StartMedicalScribeJobRequest = {
             MedicalScribeJobName: jobName,
-            DataAccessRoleArn: amplifyCustom.healthScribeServiceRole,
+            DataAccessRoleArn: '', // Not used in replacement logic
             OutputBucketName: outputBucket,
             Media: {
                 MediaFileUri: `s3://${s3Location.Bucket}/${s3Location.Key}`,
@@ -151,7 +149,7 @@ export default function NewConversation() {
             ...jobSettings,
         };
 
-        const verifyParamResults = verifyJobParams(jobParams);
+        const verifyParamResults = verifyJobParams(jobParams as any);
         if (!verifyParamResults.verified) {
             setFormError(verifyParamResults.message);
             setIsSubmitting(false);
