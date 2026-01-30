@@ -10,8 +10,10 @@ import Grid from '@cloudscape-design/components/grid';
 import ModalLoader from '@/components/SuspenseLoader/ModalLoader';
 import { useAudio } from '@/hooks/useAudio';
 import { useNotificationsContext } from '@/store/notifications';
-import { getObject, getS3Object } from '@/utils/S3Api';
+import { getObject } from '@/utils/S3Api';
 import { generateClinicalNote } from '@/utils/HealthScribeApi';
+import { detectEntitiesFromComprehendMedical } from '@/utils/ComprehendMedicalApi';
+import { mapTranscribeToHealthScribe } from '@/utils/DataMapper';
 
 import { ConversationHeader } from './ConversationHeader';
 import LeftPanel from './LeftPanel';
@@ -56,89 +58,62 @@ export default function Conversation() {
             try {
                 setJobLoading(true);
                 const bucket = import.meta.env.VITE_BUCKET_NAME;
+                const transcriptKey = `transcripts/${name}.json`;
 
-                // 1. Fetch Transcript
-                try {
-                    const transcriptKey = `transcripts/${name}.json`;
-                    const transcriptRsp = await getObject({ Bucket: bucket, Key: transcriptKey });
-                    const transcriptStr = await transcriptRsp.Body?.transformToString();
-                    if (transcriptStr) {
-                        setTranscript(JSON.parse(transcriptStr));
-                    }
-                } catch (e) {
-                    console.warn("Transcript not ready yet");
+                console.log("Loading conversation:", name);
+
+                // 1. Fetch Raw Transcript from S3
+                const transcriptRsp = await getObject({ Bucket: bucket, Key: transcriptKey });
+                const transcriptStr = await transcriptRsp.Body?.transformToString();
+
+                if (!transcriptStr) {
+                    throw new Error("Transcript file is empty or not found");
                 }
+                const rawTranscribeJson = JSON.parse(transcriptStr);
+                const rawText = rawTranscribeJson.results?.transcripts?.[0]?.transcript || "";
 
-                // 2. Fetch Summary (or generate if missing)
-                // Note: In a real app, we might poll. Here we try to fetch, if 404, we generate.
-                // Ideally, the workshop implies Bedrock runs after Transcribe.
-                // We will simply try to generate if we have a transcript but no summary?
-                // Actually, the previous logic tried to lazy-generate.
-                // But wait, the new `HealthScribeApi` ONLY exports `generateClinicalNote(text)`.
-                // It does NOT save it to S3 automatically in the user's snippet.
-                // The user's snippet just returns the JSON.
-                // So we should probably just generate it on the fly and display it?
-                // Or we can try to save it too.
-                // Let's just generate it on the fly for now to keep it simple and stateless on that part, 
-                // or maybe the user implies we should save it? 
-                // The prompt says "Generate Clinical Note with Bedrock".
-                // Let's fetch transcript, then call Bedrock.
+                // 2. Parallel Fetch: Bedrock Summary & Comprehend Entities
+                // We generate these on the fly as per the workshop architecture for Sydney
+                const [summaryData, entitiesData] = await Promise.all([
+                    generateClinicalNote(rawText),
+                    detectEntitiesFromComprehendMedical(rawText)
+                ]);
 
-                if (transcript && !summary) {
-                    // We need the transcript text.
-                    // The transcript JSON structure from Transcribe Medical:
-                    // results.transcripts[0].transcript
-                    // But wait, I need to fetch the transcript first effectively.
-                }
+                // 3. Map to HealthScribe Format for UI
+                const healthScribeObject = mapTranscribeToHealthScribe(
+                    rawTranscribeJson,
+                    summaryData,
+                    entitiesData
+                );
+
+                setSummary(summaryData);
+                setTranscript(healthScribeObject);
 
             } catch (e) {
-                addFlashMessage({
-                    id: 'Load Error',
-                    header: 'Error loading data',
-                    content: e?.toString() || 'Unknown error',
-                    type: 'error',
-                });
+                console.error("Load Error", e);
+                // Handle 404s gracefully-ish (job might be processing)
+                if ((e as any).name === 'NoSuchKey') {
+                    addFlashMessage({
+                        id: 'Job Processing',
+                        header: 'Job still processing',
+                        content: 'The transcript is not ready yet. Please try again later.',
+                        type: 'info',
+                    });
+                } else {
+                    addFlashMessage({
+                        id: 'Load Error',
+                        header: 'Error loading data',
+                        content: e?.toString() || 'Unknown error',
+                        type: 'error',
+                    });
+                }
+            } finally {
+                setJobLoading(false);
             }
-            setJobLoading(false);
         }
 
         if (conversationName) {
-            // Need to separate the async logic to properly use awaits used above inside the effect?
-            // Actually, let's just do a simpler fetch flow.
-            const bucket = import.meta.env.VITE_BUCKET_NAME;
-            const transcriptKey = `transcripts/${conversationName}.json`;
-            const summaryKey = `transcripts/${conversationName}_summary.json`; // Convention?
-
-            setJobLoading(true);
-
-            // Fetch Transcript
-            getObject({ Bucket: bucket, Key: transcriptKey })
-                .then(async (res) => {
-                    const str = await res.Body?.transformToString();
-                    if (!str) return;
-                    const json = JSON.parse(str);
-                    setTranscript(json);
-                    return json;
-                })
-                .then(async (transcriptJson) => {
-                    if (!transcriptJson) return;
-
-                    // Try to generate summary using Bedrock
-                    // We simply call generateClinicalNote with the text
-                    const text = transcriptJson.results?.transcripts?.[0]?.transcript;
-                    if (text) {
-                        try {
-                            const note = await generateClinicalNote(text);
-                            setSummary(note);
-                        } catch (e) {
-                            console.error("Bedrock generation failed", e);
-                        }
-                    }
-                })
-                .catch(e => {
-                    console.warn("Transcript likely not ready", e);
-                })
-                .finally(() => setJobLoading(false));
+            loadData(conversationName);
         }
     }, [conversationName]);
 

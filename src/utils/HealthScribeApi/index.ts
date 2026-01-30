@@ -54,7 +54,11 @@ export const startJob = async (jobName: string, s3Uri: string) => {
         OutputBucketName: import.meta.env.VITE_BUCKET_NAME,
         OutputKey: `transcripts/${jobName}.json`,
         Specialty: "PRIMARYCARE",
-        Type: "CONVERSATION"
+        Type: "CONVERSATION",
+        Settings: {
+            ShowSpeakerLabels: true,
+            MaxSpeakerLabels: 2
+        }
     });
     return await transcribe.send(command).catch(e => {
         console.error("StartJob Error", e);
