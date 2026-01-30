@@ -24,6 +24,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::637423443220:role/GitHubActionRole
           aws-region: ap-southeast-2
+          audience: sts.amazonaws.com
 
       - name: Install CDK Dependencies
         working-directory: workshop-guide/infra
