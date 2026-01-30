@@ -1,121 +1,49 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-import React, { RefObject, useCallback, useMemo, useState } from 'react';
+import { Container, Header, SpaceBetween, Box } from '@cloudscape-design/components';
 
-import { DetectEntitiesV2Response } from '@aws-sdk/client-comprehendmedical';
-import WaveSurfer from 'wavesurfer.js';
+// Simple types for the Sydney SOAP note
+interface SoapNote {
+    Subjective?: string;
+    Objective?: string;
+    Assessment?: string;
+    Plan?: string;
+    [key: string]: string | undefined;
+}
 
-import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { ExtractedHealthData } from '@/types/ComprehendMedical';
-import { IHealthScribeSummary, ISection } from '@/types/HealthScribeSummary';
-import { IHealthScribeTranscript, ITranscriptSegment } from '@/types/HealthScribeTranscript';
-import { detectEntitiesFromComprehendMedical } from '@/utils/ComprehendMedicalApi';
+interface RightPanelProps {
+    summary: SoapNote | null; // This now receives the Bedrock JSON
+    loading: boolean;
+}
 
-import LoadingContainer from '../Common/LoadingContainer';
-import ScrollingContainer from '../Common/ScrollingContainer';
-import { HighlightId } from '../types';
-import { RightPanelActions, RightPanelSettings } from './RightPanelComponents';
-import SummarizedConcepts from './SummarizedConcepts';
-import { calculateNereUnits } from './rightPanelUtils';
-import { processSummarizedSegment } from './summarizedConceptsUtils';
+export default function RightPanel({ summary, loading }: RightPanelProps) {
 
-type RightPanelProps = {
-    jobLoading: boolean;
-    summary: IHealthScribeSummary | undefined;
-    transcript: IHealthScribeTranscript | undefined;
-    highlightId: HighlightId;
-    setHighlightId: React.Dispatch<React.SetStateAction<HighlightId>>;
-    wavesurfer: RefObject<WaveSurfer | undefined>;
-};
-
-export default function RightPanel({
-    jobLoading,
-    summary,
-    transcript,
-    highlightId,
-    setHighlightId,
-    wavesurfer,
-}: RightPanelProps) {
-    const [extractingData, setExtractingData] = useState<boolean>(false);
-    const [extractedHealthData, setExtractedHealthData] = useState<ExtractedHealthData[]>([]);
-    const [rightPanelSettingsOpen, setRightPanelSettingsOpen] = useState<boolean>(false);
-    const [acceptableConfidence, setAcceptableConfidence] = useLocalStorage<number>(
-        'Insights-Comprehend-Medical-Confidence-Threshold',
-        75.0
-    );
-
-    const segmentById: { [key: string]: ITranscriptSegment } = useMemo(() => {
-        if (transcript == null) return {};
-        return transcript.Conversation.TranscriptSegments.reduce((acc, seg) => {
-            return { ...acc, [seg.SegmentId]: seg };
-        }, {});
-    }, [transcript]);
-
-    const hasInsightSections: boolean = useMemo(() => {
-        if (typeof summary?.ClinicalDocumentation?.Sections === 'undefined') return false;
-        return summary?.ClinicalDocumentation?.Sections?.length > 0;
-    }, [summary]);
-
-    const handleExtractHealthData = useCallback(async () => {
-        if (!Array.isArray(summary?.ClinicalDocumentation?.Sections)) return;
-        setExtractingData(true);
-
-        const buildExtractedHealthData = [];
-        for (const section of summary.ClinicalDocumentation.Sections) {
-            const sectionEntities: DetectEntitiesV2Response[] = [];
-            for (const summary of section.Summary) {
-                const summarizedSegment = processSummarizedSegment(summary.SummarizedSegment);
-                const detectedEntities = (await detectEntitiesFromComprehendMedical(
-                    summarizedSegment
-                )) as DetectEntitiesV2Response;
-                sectionEntities.push(detectedEntities);
-            }
-            buildExtractedHealthData.push({
-                SectionName: section.SectionName,
-                ExtractedEntities: sectionEntities,
-            });
-        }
-        setExtractedHealthData(buildExtractedHealthData);
-
-        setExtractingData(false);
-    }, [summary, setExtractingData, setExtractedHealthData]);
-
-    // Calculate the number of CM units (100-character segments) in the clinical document.
-    const clinicalDocumentNereUnits = useMemo(() => calculateNereUnits(summary), [summary]);
-
-    if (jobLoading || summary == null) {
-        return <LoadingContainer containerTitle="Insights" text="Loading Insights" />;
-    } else {
+    if (loading) {
         return (
-            <ScrollingContainer
-                containerTitle="Insights"
-                containerActions={
-                    <RightPanelActions
-                        hasInsightSections={hasInsightSections}
-                        dataExtracted={extractedHealthData.length > 0}
-                        extractingData={extractingData}
-                        clinicalDocumentNereUnits={clinicalDocumentNereUnits}
-                        setRightPanelSettingsOpen={setRightPanelSettingsOpen}
-                        handleExtractHealthData={handleExtractHealthData}
-                    />
-                }
-            >
-                <RightPanelSettings
-                    rightPanelSettingsOpen={rightPanelSettingsOpen}
-                    setRightPanelSettingsOpen={setRightPanelSettingsOpen}
-                    acceptableConfidence={acceptableConfidence}
-                    setAcceptableConfidence={setAcceptableConfidence}
-                />
-                <SummarizedConcepts
-                    sections={summary.ClinicalDocumentation.Sections as ISection[]}
-                    extractedHealthData={extractedHealthData}
-                    acceptableConfidence={acceptableConfidence}
-                    highlightId={highlightId}
-                    setHighlightId={setHighlightId}
-                    segmentById={segmentById}
-                    wavesurfer={wavesurfer}
-                />
-            </ScrollingContainer>
+            <Container>
+                <Box textAlign="center" color="text-status-inactive">
+                    Generative AI is writing clinical notes...
+                </Box>
+            </Container>
         );
     }
+
+    if (!summary) {
+        return (
+            <Container>
+                <Box textAlign="center" color="text-status-inactive">
+                    No summary available.
+                </Box>
+            </Container>
+        );
+    }
+
+    // Render the SOAP Note Keys dynamically
+    return (
+        <SpaceBetween size="l">
+            {Object.entries(summary).map(([key, value]) => (
+                <Container key={key} header={<Header variant="h2">{key}</Header>}>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{value}</div>
+                </Container>
+            ))}
+        </SpaceBetween>
+    );
 }

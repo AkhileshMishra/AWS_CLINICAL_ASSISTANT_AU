@@ -1,10 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './components/App/App'
+import './index.css'
 import { Amplify } from 'aws-amplify'
 
-// Manually configure Amplify using environment variables from CDK
-Amplify.configure({
+// FIX: Manually configure Amplify using the environment variables from CDK
+const authConfig = {
   Auth: {
     Cognito: {
       userPoolId: import.meta.env.VITE_USER_POOL_ID,
@@ -19,7 +20,9 @@ Amplify.configure({
       region: import.meta.env.VITE_AWS_REGION,
     }
   }
-});
+};
+
+Amplify.configure(authConfig);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

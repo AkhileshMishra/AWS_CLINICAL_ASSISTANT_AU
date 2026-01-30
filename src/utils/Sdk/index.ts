@@ -55,4 +55,6 @@ function printTiming(duration: number, description: string) {
     if (apiConfig.apiTiming === 'on') console.debug(`Time: ${duration}ms for ${description}`);
 }
 
+export const getAmplifyCredentials = getCredentials;
+
 export { apiConfig, updateConfig, getCredentials, getAmplifyRegion, getConfigRegion, printTiming };

@@ -1,279 +1,183 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
+
 import {
-    DeleteMedicalTranscriptionJobCommand,
-    GetMedicalTranscriptionJobCommand,
-    ListMedicalTranscriptionJobsCommand,
-    StartMedicalTranscriptionJobCommand,
-    StartMedicalTranscriptionJobRequest,
     TranscribeClient,
-} from '@aws-sdk/client-transcribe';
-import {
-    BedrockRuntimeClient,
-    InvokeModelCommand,
-} from '@aws-sdk/client-bedrock-runtime';
-import {
-    S3Client,
-    GetObjectCommand,
-    PutObjectCommand,
-    HeadObjectCommand,
-} from '@aws-sdk/client-s3';
+    StartMedicalTranscriptionJobCommand,
+    ListMedicalTranscriptionJobsCommand,
+    GetMedicalTranscriptionJobCommand,
+    DeleteMedicalTranscriptionJobCommand
+} from "@aws-sdk/client-transcribe";
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { getAmplifyCredentials } from '../Sdk';
 
-import { getConfigRegion, getCredentials, printTiming } from '@/utils/Sdk';
-
-const OUTPUT_BUCKET = import.meta.env.VITE_BUCKET_NAME;
-const BEDROCK_MODEL_ID = 'anthropic.claude-3-5-sonnet-20240620-v1:0';
-
-async function getTranscribeClient() {
-    return new TranscribeClient({
-        region: getConfigRegion(),
-        credentials: await getCredentials(),
-    });
+// Types
+export interface ListHealthScribeJobsProps {
+    JobNameContains?: string;
+    MaxResults?: number;
+    NextToken?: string;
+    Status?: string;
 }
 
-async function getBedrockClient() {
-    return new BedrockRuntimeClient({
-        region: getConfigRegion(),
-        credentials: await getCredentials(),
-    });
+export interface GetHealthScribeJobProps {
+    MedicalScribeJobName: string;
 }
 
-async function getS3Client() {
-    return new S3Client({
-        region: getConfigRegion(),
-        credentials: await getCredentials(),
-    });
+export interface DeleteHealthScribeJobProps {
+    MedicalScribeJobName: string;
 }
 
-// Compatibility Types for Transcribe Medical replacement
 export interface StartMedicalScribeJobRequest {
     MedicalScribeJobName: string;
-    DataAccessRoleArn: string;
-    OutputBucketName: string;
     Media: { MediaFileUri: string };
+    OutputBucketName: string;
+    DataAccessRoleArn?: string;
     Settings?: any;
     ChannelDefinitions?: any[];
 }
 
-
-export type ListHealthScribeJobsProps = {
-    JobNameContains?: string;
-    MaxResults?: number;
-    NextToken?: string;
-    Status?: 'ALL' | 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+// 1. Initialize Clients for Sydney (ap-southeast-2)
+const getClients = async () => {
+    const creds = await getAmplifyCredentials();
+    const config = { region: "ap-southeast-2", credentials: creds };
+    return {
+        transcribe: new TranscribeClient(config),
+        bedrock: new BedrockRuntimeClient(config)
+    };
 };
 
-export async function listHealthScribeJobs({
-    JobNameContains,
-    MaxResults = 100,
-    NextToken,
-    Status,
-}: ListHealthScribeJobsProps) {
-    const start = performance.now();
-    const transcribeClient = await getTranscribeClient();
+// 2. Start Transcription
+export const startJob = async (jobName: string, s3Uri: string) => {
+    const { transcribe } = await getClients();
+    const command = new StartMedicalTranscriptionJobCommand({
+        MedicalTranscriptionJobName: jobName,
+        LanguageCode: "en-US",
+        Media: { MediaFileUri: s3Uri },
+        OutputBucketName: import.meta.env.VITE_BUCKET_NAME,
+        OutputKey: `transcripts/${jobName}.json`,
+        Specialty: "PRIMARYCARE",
+        Type: "CONVERSATION"
+    });
+    return await transcribe.send(command).catch(e => {
+        console.error("StartJob Error", e);
+        return e;
+    });
+};
+
+// Compatibility wrapper for old NewConversation usage if needed, 
+// though we updated NewConversation to use startJob.
+export const startMedicalScribeJob = async (props: StartMedicalScribeJobRequest) => {
+    return startJob(props.MedicalScribeJobName, props.Media.MediaFileUri);
+};
+
+// 3. Generate Clinical Note with Bedrock
+export const generateClinicalNote = async (transcriptText: string) => {
+    const { bedrock } = await getClients();
+
+    const prompt = `Human: You are an expert medical scribe. 
+    Summarize the following doctor-patient transcript into a structured SOAP note.
+    
+    Transcript:
+    ${transcriptText}
+    
+    Output Instructions:
+    Return ONLY a valid JSON object. Do not add markdown formatting.
+    The JSON must use exactly these keys: "Subjective", "Objective", "Assessment", "Plan".
+    
+    Assistant:`;
+
+    const command = new InvokeModelCommand({
+        modelId: "anthropic.claude-3-haiku-20240307-v1:0",
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify({
+            anthropic_version: "bedrock-2023-05-31",
+            max_tokens: 2000,
+            messages: [{ role: "user", content: prompt }]
+        })
+    });
+
+    try {
+        const response = await bedrock.send(command);
+        const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+        const textContent = responseBody.content[0].text;
+        return JSON.parse(textContent);
+    } catch (e) {
+        console.error("Bedrock Error:", e);
+        return { Error: "Failed to generate summary. Please check logs." };
+    }
+};
+
+// 4. List Jobs (Compatibility Layer)
+export const listHealthScribeJobs = async (props: ListHealthScribeJobsProps) => {
+    const { transcribe } = await getClients();
+
     const input: any = {
-        MaxResults,
-        NextToken,
+        JobNameContains: props.JobNameContains,
+        MaxResults: props.MaxResults,
+        NextToken: props.NextToken,
     };
-    if (JobNameContains) input.JobNameContains = JobNameContains;
-    if (Status && Status !== 'ALL') input.Status = Status;
 
-    const cmd = new ListMedicalTranscriptionJobsCommand(input);
-    const response = await transcribeClient.send(cmd);
+    // Filter by status if provided and not 'ALL'
+    if (props.Status && props.Status !== 'ALL') {
+        input.Status = props.Status;
+    }
 
-    const end = performance.now();
-    printTiming(end - start, 'ListMedicalTranscriptionJobsCommand');
+    const command = new ListMedicalTranscriptionJobsCommand(input);
 
-    return {
-        MedicalScribeJobSummaries: response.MedicalTranscriptionJobSummaries?.map(job => ({
+    try {
+        const response = await transcribe.send(command);
+
+        // Map to structure expected by UI
+        const summaries = response.MedicalTranscriptionJobSummaries?.map((job: any) => ({
             MedicalScribeJobName: job.MedicalTranscriptionJobName,
             CreationTime: job.CreationTime,
             StartTime: job.StartTime,
             CompletionTime: job.CompletionTime,
             MedicalScribeJobStatus: job.TranscriptionJobStatus,
-            LanguageCode: job.LanguageCode,
-        })) || [],
-        NextToken: response.NextToken
-    };
-}
+            LanguageCode: job.LanguageCode
+        })) || [];
 
-export type GetHealthScribeJobProps = {
-    MedicalScribeJobName: string;
+        return {
+            MedicalScribeJobSummaries: summaries,
+            NextToken: response.NextToken
+        };
+    } catch (e) {
+        console.error("List Jobs Error", e);
+        return { MedicalScribeJobSummaries: [] };
+    }
 };
 
-export async function getHealthScribeJob({ MedicalScribeJobName }: GetHealthScribeJobProps) {
-    const start = performance.now();
-    const transcribeClient = await getTranscribeClient();
-
-    // 1. Get Transcription Job
-    const cmd = new GetMedicalTranscriptionJobCommand({
-        MedicalTranscriptionJobName: MedicalScribeJobName,
+// 5. Delete Job
+export const deleteHealthScribeJob = async (props: DeleteHealthScribeJobProps) => {
+    const { transcribe } = await getClients();
+    const command = new DeleteMedicalTranscriptionJobCommand({
+        MedicalTranscriptionJobName: props.MedicalScribeJobName
     });
+    return await transcribe.send(command);
+};
 
-    let job;
+// 6. Get Job (needed for Debug.tsx)
+export const getHealthScribeJob = async (props: GetHealthScribeJobProps) => {
+    const { transcribe } = await getClients();
+    const command = new GetMedicalTranscriptionJobCommand({
+        MedicalTranscriptionJobName: props.MedicalScribeJobName
+    });
     try {
-        const response = await transcribeClient.send(cmd);
-        job = response.MedicalTranscriptionJob;
-    } catch (error) {
-        console.error("Error fetching job", error);
-        throw error;
-    }
-
-    if (!job) throw new Error("Job not found");
-
-    let clinicalDocUri = null;
-    let transcriptUri = null;
-
-    if (job.TranscriptionJobStatus === 'COMPLETED') {
-        const s3Client = await getS3Client();
-        const summaryKey = `medical-output/${MedicalScribeJobName}-summary.json`;
-        const transcriptKey = `medical-output/${MedicalScribeJobName}.json`;
-
-        transcriptUri = `s3://${OUTPUT_BUCKET}/${transcriptKey}`;
-
-        // Check if summary exists
-        try {
-            await s3Client.send(new HeadObjectCommand({ Bucket: OUTPUT_BUCKET, Key: summaryKey }));
-            clinicalDocUri = `s3://${OUTPUT_BUCKET}/${summaryKey}`;
-        } catch (e: any) {
-            // Summary doesn't exist. Generate it.
-            if (e.name === 'NotFound') {
-                console.log("Generating summary for", MedicalScribeJobName);
-                await generatesummary(MedicalScribeJobName, transcriptKey, summaryKey);
-                clinicalDocUri = `s3://${OUTPUT_BUCKET}/${summaryKey}`;
+        const response = await transcribe.send(command);
+        // Map to MedicalScribeJob structure expected by legacy components
+        return {
+            MedicalScribeJob: {
+                MedicalScribeJobName: response.MedicalTranscriptionJob?.MedicalTranscriptionJobName,
+                MedicalScribeJobStatus: response.MedicalTranscriptionJob?.TranscriptionJobStatus,
+                StartTime: response.MedicalTranscriptionJob?.StartTime,
+                CompletionTime: response.MedicalTranscriptionJob?.CompletionTime,
+                // Add fake output URI to satisfy types if needed
+                MedicalScribeOutput: {
+                    TranscriptFileUri: `s3://${import.meta.env.VITE_BUCKET_NAME}/transcripts/${props.MedicalScribeJobName}.json`,
+                    ClinicalDocumentUri: `s3://${import.meta.env.VITE_BUCKET_NAME}/transcripts/${props.MedicalScribeJobName}_summary.json`
+                }
             }
-        }
+        };
+    } catch (e) {
+        return null;
     }
-
-    const end = performance.now();
-    printTiming(end - start, 'GetMedicalScribeJob (Simulated)');
-
-    return {
-        MedicalScribeJob: {
-            MedicalScribeJobName: job.MedicalTranscriptionJobName,
-            MedicalScribeJobStatus: job.TranscriptionJobStatus,
-            MedicalScribeOutput: {
-                TranscriptFileUri: transcriptUri,
-                ClinicalDocumentUri: clinicalDocUri,
-            }
-        }
-    };
-}
-
-async function generatesummary(jobName: string, transcriptKey: string, summaryKey: string) {
-    const s3Client = await getS3Client();
-    const bedrockClient = await getBedrockClient();
-
-    // 1. Get Transcript JSON
-    const getObj = await s3Client.send(new GetObjectCommand({ Bucket: OUTPUT_BUCKET, Key: transcriptKey }));
-    const transcriptStr = await getObj.Body?.transformToString();
-    if (!transcriptStr) throw new Error("Empty transcript");
-
-    const transcriptJson = JSON.parse(transcriptStr);
-
-    // Extract text from Transcribe Medical Output
-    // Structure: results.transcripts[0].transcript
-    const fullText = transcriptJson.results?.transcripts?.[0]?.transcript || "";
-
-    // 2. Call Bedrock
-    const prompt = `You are a medical scribe. Analyze the following doctor-patient consultation transcript and generate a structured clinical note in the following JSON format.
-    
-    Transcript:
-    ${fullText}
-    
-    Required JSON Format:
-    {
-       "ClinicalDocumentation": {
-          "Sections": [
-             {
-                "SectionName": "Subjective",
-                "Summary": [ { "SummarizedSegment": "..." } ]
-             },
-             {
-                "SectionName": "Objective",
-                "Summary": [ { "SummarizedSegment": "..." } ]
-             },
-             {
-                "SectionName": "Assessment",
-                "Summary": [ { "SummarizedSegment": "..." } ]
-             },
-             {
-                "SectionName": "Plan",
-                "Summary": [ { "SummarizedSegment": "..." } ]
-             }
-          ]
-       }
-    }
-    
-    Return ONLY valid JSON. Do not include markdown formatting.`;
-
-    const response = await bedrockClient.send(new InvokeModelCommand({
-        modelId: BEDROCK_MODEL_ID,
-        contentType: 'application/json',
-        accept: 'application/json',
-        body: JSON.stringify({
-            anthropic_version: "bedrock-2023-05-31",
-            max_tokens: 2000,
-            messages: [
-                { role: "user", content: prompt }
-            ]
-        })
-    }));
-
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-    const generatedText = responseBody.content?.[0]?.text || "{}";
-
-    // Clean up if markdown blocks are present
-    const jsonStr = generatedText.replace(/```json\n|\n```/g, '');
-
-    // 3. Save Summary to S3
-    await s3Client.send(new PutObjectCommand({
-        Bucket: OUTPUT_BUCKET,
-        Key: summaryKey,
-        Body: jsonStr,
-        ContentType: 'application/json'
-    }));
-}
-
-export type DeleteHealthScribeJobProps = {
-    MedicalScribeJobName: string;
 };
-
-export async function deleteHealthScribeJob({ MedicalScribeJobName }: DeleteHealthScribeJobProps) {
-    const client = await getTranscribeClient();
-    return await client.send(new DeleteMedicalTranscriptionJobCommand({ MedicalTranscriptionJobName: MedicalScribeJobName }));
-}
-
-export async function startMedicalScribeJob(params: StartMedicalScribeJobRequest) {
-    const client = await getTranscribeClient();
-    const jobName = params.MedicalScribeJobName!; // Start request has it optional in types but practically required
-
-    const cmd = new StartMedicalTranscriptionJobCommand({
-        MedicalTranscriptionJobName: jobName,
-        Media: params.Media,
-        OutputBucketName: OUTPUT_BUCKET,
-        OutputKey: `medical-output/${jobName}.json`,
-        LanguageCode: 'en-US',
-        Specialty: 'PRIMARYCARE',
-        Type: 'CONVERSATION',
-        Settings: {
-            ShowSpeakerLabels: true,
-            MaxSpeakerLabels: 2
-        }
-    });
-
-    const response = await client.send(cmd);
-
-    // Return compatible structure
-    return {
-        MedicalScribeJob: {
-            MedicalScribeJobName: response.MedicalTranscriptionJob?.MedicalTranscriptionJobName || jobName,
-            MedicalScribeJobStatus: response.MedicalTranscriptionJob?.TranscriptionJobStatus,
-            StartTime: response.MedicalTranscriptionJob?.StartTime,
-            // Add other fields if needed by UI
-        },
-        ...response
-    };
-}
-
-export { listHealthScribeJobs as listMedicalScribeJobs }; // Export alias if needed

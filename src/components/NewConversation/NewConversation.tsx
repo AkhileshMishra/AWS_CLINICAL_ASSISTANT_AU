@@ -14,17 +14,13 @@ import RadioGroup from '@cloudscape-design/components/radio-group';
 import SpaceBetween from '@cloudscape-design/components/space-between';
 import Spinner from '@cloudscape-design/components/spinner';
 import TokenGroup from '@cloudscape-design/components/token-group';
-import {
-    ClinicalNoteGenerationSettings,
-    MedicalScribeNoteTemplate,
-    MedicalScribeParticipantRole,
-} from '@aws-sdk/client-transcribe';
+
 import { Progress } from '@aws-sdk/lib-storage';
 import dayjs from 'dayjs';
 
 import { useS3 } from '@/hooks/useS3';
 import { useNotificationsContext } from '@/store/notifications';
-import { startMedicalScribeJob, StartMedicalScribeJobRequest } from '@/utils/HealthScribeApi';
+import { startJob } from '@/utils/HealthScribeApi';
 import { fileUpload } from '@/utils/S3Api';
 import sleep from '@/utils/sleep';
 
@@ -33,34 +29,27 @@ import AudioRecorder from './AudioRecorder';
 import { AudioDropzone } from './Dropzone';
 import { AudioDetailSettings, AudioIdentificationType, InputName, NoteType } from './FormComponents';
 import styles from './NewConversation.module.css';
-import { verifyJobParams } from './formUtils';
 import { AudioDetails, AudioSelection } from './types';
 
 export default function NewConversation() {
     const { updateProgressBar } = useNotificationsContext();
     const navigate = useNavigate();
 
-    const [isSubmitting, setIsSubmitting] = useState<boolean>(false); // is job submitting
+    const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
     const [formError, setFormError] = useState<string | React.ReactElement[]>('');
-    const [jobName, setJobName] = useState<string>(''); // form - job name
-    const [noteType, setNoteType] = useState<MedicalScribeNoteTemplate>('HISTORY_AND_PHYSICAL'); // form - note type
-    const [audioSelection, setAudioSelection] = useState<AudioSelection>('speakerPartitioning'); // form - audio selection
-    // form - audio details
+    const [jobName, setJobName] = useState<string>('');
+    const [noteType, setNoteType] = useState<any>('HISTORY_AND_PHYSICAL');
+    const [audioSelection, setAudioSelection] = useState<AudioSelection>('speakerPartitioning');
     const [audioDetails, setAudioDetails] = useState<AudioDetails>({
-        speakerPartitioning: {
-            maxSpeakers: 2,
-        },
-        channelIdentification: {
-            channel1: 'CLINICIAN',
-        },
+        speakerPartitioning: { maxSpeakers: 2 },
+        channelIdentification: { channel1: 'CLINICIAN' },
     });
-    const [filePath, setFilePath] = useState<File>(); // only one file is allowed from react-dropzone. NOT an array
-    const [outputBucket, getUploadMetadata] = useS3(); // outputBucket is the Amplify bucket, and uploadMetadata contains uuid4
+    const [filePath, setFilePath] = useState<File>();
+    const [outputBucket, getUploadMetadata] = useS3();
 
-    const [submissionMode, setSubmissionMode] = useState<string>('uploadAudio'); // to hide or show the live recorder
-    const [recordedAudio, setRecordedAudio] = useState<File | undefined>(); // audio file recorded via live recorder
+    const [submissionMode, setSubmissionMode] = useState<string>('uploadAudio');
+    const [recordedAudio, setRecordedAudio] = useState<File | undefined>();
 
-    // Set array for TokenGroup items
     const fileToken = useMemo(() => {
         if (!filePath) {
             return undefined;
@@ -72,96 +61,39 @@ export default function NewConversation() {
         }
     }, [filePath]);
 
-    /**
-     * @description Callback function used by the lib-storage SDK Upload function. Updates the progress bar
-     *              with the status of the upload
-     * @param loaded {number} number of bytes uploaded
-     * @param total {number} total number of bytes to be uploaded
-     */
     function s3UploadCallback({ loaded, total }: Progress) {
-        // Last 1% is for submitting to the HealthScribe API
         const value = Math.round(((loaded || 1) / (total || 100)) * 99);
         const loadedMb = Math.round((loaded || 1) / 1024 / 1024);
         const totalMb = Math.round((total || 1) / 1024 / 1024);
         updateProgressBar({
-            id: `New HealthScribe Job: ${jobName}`,
+            id: `New Job: ${jobName}`,
             value: value,
             description: `Uploaded ${loadedMb}MB / ${totalMb}MB`,
         });
     }
 
-    /**
-     * @description Submit the form to create a new HealthScribe job
-     */
     async function submitJob(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setIsSubmitting(true);
         setFormError('');
 
-        const clinicalNoteGenerationSettings: ClinicalNoteGenerationSettings = {
-            NoteTemplate: noteType,
-        };
-
-        // build job params with StartMedicalScribeJob request syntax
-        const jobSettings =
-            audioSelection === 'speakerPartitioning'
-                ? {
-                    Settings: {
-                        ClinicalNoteGenerationSettings: clinicalNoteGenerationSettings,
-                        MaxSpeakerLabels: audioDetails.speakerPartitioning.maxSpeakers,
-                        ShowSpeakerLabels: true,
-                    },
-                }
-                : {
-                    Settings: {
-                        ChannelIdentification: true,
-                        ClinicalNoteGenerationSettings: clinicalNoteGenerationSettings,
-                    },
-                    ChannelDefinitions: [
-                        {
-                            ChannelId: 0,
-                            ParticipantRole: audioDetails.channelIdentification
-                                .channel1 as MedicalScribeParticipantRole,
-                        },
-                        {
-                            ChannelId: 1,
-                            ParticipantRole:
-                                audioDetails.channelIdentification.channel1 === 'CLINICIAN'
-                                    ? 'PATIENT'
-                                    : ('CLINICIAN' as MedicalScribeParticipantRole),
-                        },
-                    ],
-                };
+        if (!jobName) {
+            setFormError('Job name is required');
+            setIsSubmitting(false);
+            return;
+        }
 
         const uploadLocation = getUploadMetadata();
         const s3Location = {
             Bucket: uploadLocation.bucket,
             Key: `${uploadLocation.key}/${(filePath as File).name}`,
         };
+        const s3Uri = `s3://${s3Location.Bucket}/${s3Location.Key}`;
 
-        const jobParams: StartMedicalScribeJobRequest = {
-            MedicalScribeJobName: jobName,
-            DataAccessRoleArn: '', // Not used in replacement logic
-            OutputBucketName: outputBucket,
-            Media: {
-                MediaFileUri: `s3://${s3Location.Bucket}/${s3Location.Key}`,
-            },
-            ...jobSettings,
-        };
-
-        const verifyParamResults = verifyJobParams(jobParams as any);
-        if (!verifyParamResults.verified) {
-            setFormError(verifyParamResults.message);
-            setIsSubmitting(false);
-            return;
-        }
-
-        // Scroll to top
         window.scrollTo(0, 0);
 
-        // Add initial progress flash message
         updateProgressBar({
-            id: `New HealthScribe Job: ${jobName}`,
+            id: `New Job: ${jobName}`,
             value: 0,
             description: 'Upload to S3 in progress...',
         });
@@ -175,7 +107,7 @@ export default function NewConversation() {
             });
         } catch (e) {
             updateProgressBar({
-                id: `New HealthScribe Job: ${jobName}`,
+                id: `New Job: ${jobName}`,
                 type: 'error',
                 value: 0,
                 description: 'Uploading files to S3 failed',
@@ -186,35 +118,33 @@ export default function NewConversation() {
         }
 
         try {
-            const startJob = await startMedicalScribeJob(jobParams);
-            if (startJob?.MedicalScribeJob?.MedicalScribeJobStatus) {
+            const result = await startJob(jobName, s3Uri);
+            if (result?.MedicalTranscriptionJob?.MedicalTranscriptionJobStatus) {
                 updateProgressBar({
-                    id: `New HealthScribe Job: ${jobName}`,
+                    id: `New Job: ${jobName}`,
                     type: 'success',
                     value: 100,
-                    description: 'HealthScribe job submitted',
-                    additionalInfo: `Audio file successfully uploaded to S3 and submitted to HealthScribe at ${dayjs(
-                        startJob.MedicalScribeJob.StartTime
-                    ).format('MM/DD/YYYY hh:mm A')}. Redirecting to conversation list in 5 seconds.`,
+                    description: 'Transcription job submitted',
+                    additionalInfo: `Job started at ${dayjs(result.MedicalTranscriptionJob.StartTime).format('MM/DD/YYYY hh:mm A')}. Redirecting...`,
                 });
                 await sleep(5000);
                 navigate('/conversations');
             } else {
                 updateProgressBar({
-                    id: `New HealthScribe Job: ${jobName}`,
+                    id: `New Job: ${jobName}`,
                     type: 'info',
                     value: 100,
-                    description: 'Unable to confirm HealthScribe job submission',
-                    additionalInfo: `Response from HealthScribe: ${JSON.stringify(startJob)}`,
+                    description: 'Unable to confirm job submission',
+                    additionalInfo: `Response: ${JSON.stringify(result)}`,
                 });
             }
         } catch (e) {
             updateProgressBar({
-                id: `New HealthScribe Job: ${jobName}`,
+                id: `New Job: ${jobName}`,
                 type: 'error',
                 value: 0,
-                description: 'Submitting job to HealthScribe failed',
-                additionalInfo: `Error submitting job to HealthScribe: ${(e as Error).message}`,
+                description: 'Submitting job failed',
+                additionalInfo: `Error: ${(e as Error).message} `,
             });
             setIsSubmitting(false);
             throw e;
@@ -232,50 +162,28 @@ export default function NewConversation() {
             headerVariant={'high-contrast'}
             header={
                 <Header
-                    description="Upload your audio file to be processed by AWS HealthScribe"
+                    description="Upload your audio file to be processed by AWS Transcribe Medical & Bedrock"
                     variant="awsui-h1-sticky"
                 >
-                    New Conversation
+                    New Consultation
                 </Header>
             }
         >
-            <Container
-                header={
-                    <Header
-                        variant="h3"
-                        description="Note: AWS HealthScribe offers additional features not built into this demo, such as Custom Vocabulary, Content Removal, and more. This is available via the AWS console, API, or SDK."
-                    />
-                }
-            >
+            <Container>
                 <form onSubmit={(e) => submitJob(e)}>
                     <Form
                         errorText={formError}
                         actions={
                             <SpaceBetween direction="horizontal" size="xs">
-                                {isSubmitting ? (
-                                    <Button formAction="submit" variant="primary" disabled={true}>
-                                        <Spinner />
-                                    </Button>
-                                ) : (
-                                    <Button formAction="submit" variant="primary" disabled={!filePath}>
-                                        Submit
-                                    </Button>
-                                )}
+                                <Button formAction="submit" variant="primary" disabled={!filePath || isSubmitting}>
+                                    {isSubmitting ? <Spinner /> : "Submit"}
+                                </Button>
                             </SpaceBetween>
                         }
                     >
                         <SpaceBetween direction="vertical" size="xl">
                             <InputName jobName={jobName} setJobName={setJobName} />
-                            <NoteType noteType={noteType} setNoteType={setNoteType} />
-                            <AudioIdentificationType
-                                audioSelection={audioSelection}
-                                setAudioSelection={setAudioSelection}
-                            />
-                            <AudioDetailSettings
-                                audioSelection={audioSelection}
-                                audioDetails={audioDetails}
-                                setAudioDetails={setAudioDetails}
-                            />
+
                             <FormField label="Audio source">
                                 <SpaceBetween direction="vertical" size="xl">
                                     <div className={styles.submissionModeRadio}>
@@ -290,24 +198,12 @@ export default function NewConversation() {
                                         />
                                     </div>
                                     {submissionMode === 'liveRecording' ? (
-                                        <>
-                                            <FormField
-                                                label="Record"
-                                                description="The audio file will be submitted to AWS HealthScribe after the recording is complete. Please position your device or microphone so it can capture all conversation participants."
-                                            ></FormField>
-                                            <AudioRecorder setRecordedAudio={setRecordedAudio} />
-                                        </>
+                                        <AudioRecorder setRecordedAudio={setRecordedAudio} />
                                     ) : (
                                         <FormField label="Select Files">
                                             <AudioDropzone setFilePath={setFilePath} setFormError={setFormError} />
                                             <TokenGroup
-                                                i18nStrings={{
-                                                    limitShowFewer: 'Show fewer files',
-                                                    limitShowMore: 'Show more files',
-                                                }}
-                                                onDismiss={() => {
-                                                    setFilePath(undefined);
-                                                }}
+                                                onDismiss={() => setFilePath(undefined)}
                                                 items={fileToken ? [fileToken] : []}
                                                 alignment="vertical"
                                                 limit={1}
