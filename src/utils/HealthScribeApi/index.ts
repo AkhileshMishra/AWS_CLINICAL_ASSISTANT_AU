@@ -58,7 +58,11 @@ export const startJob = async (jobName: string, s3Uri: string) => {
         Settings: {
             ShowSpeakerLabels: true,
             MaxSpeakerLabels: 2
-        }
+        },
+        Tags: [
+            { Key: "Solution", Value: "AWS_CLINICAL_ASSISTANT_AU" },
+            { Key: "Environment", Value: "Workshop" }
+        ]
     });
     return await transcribe.send(command).catch(e => {
         console.error("StartJob Error", e);
