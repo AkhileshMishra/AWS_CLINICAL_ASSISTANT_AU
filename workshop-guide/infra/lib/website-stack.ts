@@ -9,24 +9,22 @@ export class WebsiteStack extends cdk.Stack {
         super(scope, id, props);
 
         // 1. S3 Bucket (Storage)
-        // Minimal Cost: Standard Storage, no versioning needed for a guide
         const bucket = new s3.Bucket(this, 'GuideBucket', {
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
             encryption: s3.BucketEncryption.S3_MANAGED,
-            removalPolicy: cdk.RemovalPolicy.DESTROY, // For easy cleanup if needed
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
             autoDeleteObjects: true,
         });
 
         // 2. CloudFront Distribution (CDN + SSL)
-        // Minimal Cost: Free Tier eligible, uses OAC to access S3 securely
         const distribution = new cloudfront.Distribution(this, 'GuideDistribution', {
             defaultBehavior: {
-                origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
+                origin: new origins.S3Origin(bucket),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
             },
             defaultRootObject: 'index.html',
-            priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Cheapest: North America / Europe only (but served globally)
+            priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
         });
 
         // 3. Outputs for GitHub Action
