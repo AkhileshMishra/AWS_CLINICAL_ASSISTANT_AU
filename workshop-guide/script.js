@@ -23,7 +23,7 @@ const content = {
     prereq: {
         title: "Module 1: Infrastructure Prerequisites",
         html: `
-            <p>Before starting the coding implementation, you need the backend infrastructure. Since removing the Amplify CLI is part of this modern approach, we use AWS CDK or manual setup.</p>
+            <p>Before starting the coding implementation, you need the backend infrastructure.</p>
             
             <h3>Required Outputs</h3>
             <p>Ensure you have deployed a stack (or manually created resources) providing:</p>
