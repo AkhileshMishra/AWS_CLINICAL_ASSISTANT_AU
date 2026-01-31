@@ -5,5 +5,5 @@ import { WebsiteStack } from '../lib/website-stack';
 
 const app = new cdk.App();
 new WebsiteStack(app, 'SydneyWorkshopGuideStack', {
-    env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: 'ap-southeast-2' },
+    env: { region: 'ap-southeast-2' },
 });
