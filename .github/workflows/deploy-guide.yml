@@ -28,7 +28,7 @@ jobs:
 
       - name: Install CDK Dependencies
         working-directory: workshop-guide/infra
-        run: npm ci
+        run: npm install
 
       - name: Deploy Infrastructure
         working-directory: workshop-guide/infra
