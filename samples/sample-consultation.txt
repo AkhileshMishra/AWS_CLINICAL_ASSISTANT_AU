@@ -1,0 +1,25 @@
+Doctor: Good morning. What brings you in today?
+
+Patient: Hi doctor. I've been having this persistent headache for about three days now. It's mostly on the right side of my head.
+
+Doctor: I see. Can you describe the pain? Is it throbbing, sharp, or more of a dull ache?
+
+Patient: It's more of a throbbing pain. It gets worse when I'm in bright light or loud environments.
+
+Doctor: Have you experienced any nausea or vomiting with the headache?
+
+Patient: Yes, I felt nauseous yesterday but didn't actually vomit.
+
+Doctor: Any visual disturbances? Like seeing spots or flashing lights?
+
+Patient: Now that you mention it, I did see some flickering lights before the headache started.
+
+Doctor: Based on what you're describing, this sounds like it could be a migraine. Have you had migraines before?
+
+Patient: My mother gets them, but I've never had one this bad.
+
+Doctor: That family history is relevant. I'm going to recommend some lifestyle modifications and prescribe sumatriptan for acute relief. Take it at the onset of symptoms. I also want you to keep a headache diary to identify triggers.
+
+Patient: Okay, thank you doctor. Should I be worried about anything serious?
+
+Doctor: Given your symptoms and family history, I'm confident this is migraine. However, if you experience sudden severe headache, neck stiffness, or fever, please come back immediately or go to emergency.

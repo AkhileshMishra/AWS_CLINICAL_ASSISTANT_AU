@@ -178,8 +178,8 @@ git --version     # Should show 2.x</code></pre>
                 <li>Click <strong>Modify model access</strong> (orange button)</li>
                 <li>Find <strong>Anthropic</strong> section and check:
                     <ul>
-                        <li>✅ Claude 3 Haiku</li>
-                        <li>✅ Claude 3.5 Sonnet (optional but recommended)</li>
+                        <li>✅ Claude 3 Haiku (required - this is the default model)</li>
+                        <li>✅ Claude 3.5 Sonnet (optional - can be configured in code)</li>
                     </ul>
                 </li>
                 <li>Click <strong>Next</strong>, then <strong>Submit</strong></li>
@@ -192,15 +192,22 @@ git --version     # Should show 2.x</code></pre>
 
             <hr>
 
-            <h2>3. Bootstrap CDK (First-time only)</h2>
-            <p>If this is your first time using CDK in this AWS account/region, run:</p>
+            <h2>3. Bootstrap AWS CDK</h2>
+            
+            <div class="callout">
+                <span class="callout-title">⚠️ Required for First-Time CDK Users</span>
+                CDK Bootstrap provisions resources (S3 bucket, IAM roles) that CDK needs to deploy stacks. <strong>You must run this once per AWS account/region combination before your first CDK deployment.</strong> If you skip this step, <code>cdk deploy</code> will fail.
+            </div>
+
+            <p>Run the following command:</p>
             <pre><code>cdk bootstrap aws://ACCOUNT-ID/ap-southeast-2</code></pre>
             <p>Replace <code>ACCOUNT-ID</code> with your 12-digit AWS account ID (visible from <code>aws sts get-caller-identity</code>).</p>
 
-            <div class="callout">
-                <span class="callout-title">💡 Tip</span>
-                You can also run <code>cdk bootstrap</code> without arguments if your AWS CLI is configured correctly.
-            </div>
+            <p>Or simply run without arguments if your AWS CLI is configured correctly:</p>
+            <pre><code>cdk bootstrap</code></pre>
+
+            <p>You should see output ending with:</p>
+            <pre><code>✅  Environment aws://123456789012/ap-southeast-2 bootstrapped.</code></pre>
         `,
         prev: 'prereq',
         next: 'clone'

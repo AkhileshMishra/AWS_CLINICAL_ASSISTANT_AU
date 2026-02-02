@@ -5,14 +5,14 @@ This application demonstrates the art of the possible for clinical note generati
 **Key Architecture Changes in this Edition:**
 - **Infrastructure**: Replaced Amplify CLI backend with **AWS CDK**.
 - **Transcription**: Uses **AWS Transcribe Medical** instead of HealthScribe's built-in transcription.
-- **Consultation Summarization**: Uses **Amazon Bedrock (Claude 3.5 Sonnet)** to generate clinical notes from the transcript.
+- **Consultation Summarization**: Uses **Amazon Bedrock (Claude 3 Haiku)** to generate clinical notes from the transcript. Claude 3.5 Sonnet can be configured as an alternative.
 - **Authentication**: Amazon Cognito (provisioned via CDK).
 - **Storage**: Amazon S3 (provisioned via CDK).
 
 ## Features
 - **Record or Upload Audio**: Capture doctor-patient consultations.
 - **Real-time Transcription**: (Simulated via Transcribe Medical).
-- **AI-Generated Clinical Notes**: Automatic generation of SOAP notes (Subjective, Objective, Assessment, Plan) using Claude 3.5 Sonnet.
+- **AI-Generated Clinical Notes**: Automatic generation of SOAP notes (Subjective, Objective, Assessment, Plan) using Claude 3 Haiku.
 - **Sydney Region Support**: Fully deployable in `ap-southeast-2`.
 
 ## Deployment
@@ -57,12 +57,16 @@ Navigate to `http://localhost:5173` to view the application.
 3.  **Storage**: Amazon S3 (Audio files and JSON transcripts/summaries).
 4.  **Processing**:
     -   **Transcription**: AWS Transcribe Medical (`StartMedicalTranscriptionJob`).
-    -   **Summarization**: Amazon Bedrock (`anthropic.claude-3-5-sonnet-20240620-v1:0`).
+    -   **Summarization**: Amazon Bedrock (`anthropic.claude-3-haiku-20240307-v1:0`).
 
 ## Security
 - **Authentication**: Users must sign up/sign in via Cognito.
 - **Data Privacy**: Audio and transcripts are stored in your private S3 bucket.
 - **IAM Roles**: Least privilege roles are used for Transcribe and Bedrock access.
+
+## Known Limitations
+- **Language**: Transcription is hardcoded to `en-US`. Other languages are not currently supported.
+- **Speaker Roles**: The first speaker (`spk_0`) is assumed to be the clinician. If the patient speaks first, roles may be swapped in the transcript.
 
 ## License
 This library is licensed under the MIT-0 License. See the LICENSE file.

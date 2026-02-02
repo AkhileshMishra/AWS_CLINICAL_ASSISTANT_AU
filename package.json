@@ -63,6 +63,5 @@
         "cross-spawn": "^7.0.6"
     },
     "pre-commit": "lint",
-    "license": "MIT",
-    "packageManager": "yarn@1.22.22"
+    "license": "MIT"
 }
