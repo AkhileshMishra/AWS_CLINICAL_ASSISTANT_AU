@@ -398,7 +398,8 @@
         "transcribe:DeleteMedicalTranscriptionJob",
         "transcribe:GetMedicalTranscriptionJob",
         "transcribe:ListMedicalTranscriptionJobs",
-        "transcribe:StartMedicalTranscriptionJob"
+        "transcribe:StartMedicalTranscriptionJob",
+        "transcribe:TagResource"
        ],
        "Effect": "Allow",
        "Resource": "*"

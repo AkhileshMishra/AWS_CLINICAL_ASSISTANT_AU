@@ -103,7 +103,8 @@ export class ClinicalAssistantStack extends cdk.Stack {
                 'transcribe:StartMedicalTranscriptionJob',
                 'transcribe:GetMedicalTranscriptionJob',
                 'transcribe:ListMedicalTranscriptionJobs',
-                'transcribe:DeleteMedicalTranscriptionJob'
+                'transcribe:DeleteMedicalTranscriptionJob',
+                'transcribe:TagResource'
             ],
             resources: ['*']
         }));

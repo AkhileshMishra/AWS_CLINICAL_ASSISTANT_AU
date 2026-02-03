@@ -16,16 +16,16 @@
         }
       }
     },
-    "445da8a6deed13641d78b8af5b8c53a203722681000241b8b6f56d4077031d1b": {
+    "562c2a773f232a0e5cbc50ccda7f7d8c92a9fe4f9f22108849790eee1e8bb7ed": {
       "displayName": "ClinicalAssistantStack Template",
       "source": {
         "path": "ClinicalAssistantStack.template.json",
         "packaging": "file"
       },
       "destinations": {
-        "current_account-ap-southeast-2-476a8526": {
+        "current_account-ap-southeast-2-01f95fcf": {
           "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-ap-southeast-2",
-          "objectKey": "445da8a6deed13641d78b8af5b8c53a203722681000241b8b6f56d4077031d1b.json",
+          "objectKey": "562c2a773f232a0e5cbc50ccda7f7d8c92a9fe4f9f22108849790eee1e8bb7ed.json",
           "region": "ap-southeast-2",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-ap-southeast-2"
         }
