@@ -96,7 +96,16 @@ sudo ./aws/install</code></pre>
             <h2>3. AWS CDK (Required)</h2>
             <p>The AWS Cloud Development Kit deploys infrastructure as code.</p>
 
-            <h3>Install (all platforms):</h3>
+            <h3>Install on macOS/Linux:</h3>
+            <pre><code>sudo npm install -g aws-cdk</code></pre>
+            
+            <div class="callout">
+                <span class="callout-title">⚠️ Permission Note for macOS/Linux</span>
+                The <code>sudo</code> is required because global npm packages are installed in a system directory. If you get permission errors later with <code>npm install</code>, run:
+                <pre><code>sudo chown -R $(whoami) ~/.npm</code></pre>
+            </div>
+
+            <h3>Install on Windows (Run as Administrator):</h3>
             <pre><code>npm install -g aws-cdk</code></pre>
 
             <h3>Verify installation:</h3>
@@ -288,6 +297,13 @@ git --version     # Should show 2.x</code></pre>
             <h2>2. Install CDK Dependencies</h2>
             <pre><code>npm install</code></pre>
             <p>This downloads the AWS CDK libraries. Takes about 30 seconds.</p>
+            
+            <div class="callout">
+                <span class="callout-title">⚠️ Permission Error?</span>
+                If you see <code>EACCES: permission denied</code>, run:
+                <pre><code>sudo chown -R $(whoami) ~/.npm
+npm install</code></pre>
+            </div>
 
             <h2>3. Deploy the Stack</h2>
             <pre><code>cdk deploy</code></pre>
@@ -315,6 +331,12 @@ ClinicalAssistantStack.IdentityPoolId = ap-southeast-2:12345678-abcd-efgh-ijkl-1
 ClinicalAssistantStack.Region = ap-southeast-2</code></pre>
 
             <p><strong>⚠️ IMPORTANT:</strong> Keep this terminal open! You'll need these values in Module 6.</p>
+            
+            <div class="callout">
+                <span class="callout-title">💡 Lost your outputs?</span>
+                You can retrieve them anytime with:
+                <pre><code>aws cloudformation describe-stacks --stack-name ClinicalAssistantStack --query "Stacks[0].Outputs" --output table --region ap-southeast-2</code></pre>
+            </div>
         `,
         prev: 'clone',
         next: 'architecture'
@@ -445,8 +467,19 @@ VITE_IDENTITY_POOL_ID=ap-southeast-2:12345678-abcd-efgh-ijkl-123456789012</code>
 
             <h2>1. Install Frontend Dependencies</h2>
             <p>From the project root directory:</p>
-            <pre><code>npm install</code></pre>
+            <pre><code>npm install --legacy-peer-deps</code></pre>
+            
+            <div class="callout">
+                <span class="callout-title">⚠️ Why --legacy-peer-deps?</span>
+                The project uses React 19, but some UI components (Cloudscape) haven't updated their peer dependencies yet. This flag allows npm to proceed despite the version mismatch. The app works correctly.
+            </div>
+            
             <p>This downloads React and other frontend libraries. Takes 1-2 minutes.</p>
+            
+            <h3>If you get permission errors (EACCES):</h3>
+            <p>This happens if you used <code>sudo</code> to install CDK earlier. Fix it with:</p>
+            <pre><code>sudo chown -R $(whoami) ~/.npm
+npm install --legacy-peer-deps</code></pre>
 
             <h2>2. Start the Development Server</h2>
             <pre><code>npm run dev</code></pre>
@@ -461,39 +494,79 @@ VITE_IDENTITY_POOL_ID=ap-southeast-2:12345678-abcd-efgh-ijkl-123456789012</code>
             <pre><code>http://localhost:5173</code></pre>
 
             <h2>4. Create an Account</h2>
+            <p>The app uses Amazon Cognito for authentication. You need to create an account:</p>
             <ol>
                 <li>Click <strong>"Create Account"</strong> or <strong>"Sign Up"</strong></li>
                 <li>Enter your email address</li>
-                <li>Create a password (min 8 chars, uppercase, lowercase, number)</li>
-                <li>Check your email for a verification code</li>
-                <li>Enter the code to verify your account</li>
-                <li>Sign in with your new credentials</li>
-            </ol>
-
-            <h2>5. Test the Application</h2>
-            <ol>
-                <li>Click <strong>"New Conversation"</strong> (top right)</li>
-                <li>Either:
+                <li>Create a password that meets these requirements:
                     <ul>
-                        <li><strong>Upload</strong> an audio file (.wav, .mp3) of a medical conversation, OR</li>
-                        <li><strong>Record</strong> a sample conversation using the microphone</li>
+                        <li>Minimum <strong>8 characters</strong></li>
+                        <li>At least one <strong>uppercase</strong> letter (A-Z)</li>
+                        <li>At least one <strong>lowercase</strong> letter (a-z)</li>
+                        <li>At least one <strong>number</strong> (0-9)</li>
+                        <li>At least one <strong>special character</strong> (!@#$%^&* etc.)</li>
                     </ul>
                 </li>
+                <li>Check your email for a <strong>verification code</strong> (check spam folder too)</li>
+                <li>Enter the 6-digit code to verify your account</li>
+                <li>Sign in with your email and password</li>
+            </ol>
+            
+            <div class="callout">
+                <span class="callout-title">💡 Password Example</span>
+                A valid password: <code>MyPass123!</code><br>
+                An invalid password: <code>password</code> (missing uppercase, number, special char)
+            </div>
+
+            <h2>5. Test the Application</h2>
+            <p>Once signed in, you have three ways to input audio:</p>
+            
+            <h3>Option A: Upload Pre-recorded Audio</h3>
+            <ol>
+                <li>Click <strong>"New Conversation"</strong></li>
+                <li>Select <strong>"Upload Audio"</strong></li>
+                <li>Drag & drop or click to select an audio file (.wav, .mp3, .m4a, .flac)</li>
                 <li>Enter a name for the conversation</li>
                 <li>Click <strong>"Submit"</strong></li>
-                <li>Wait 30-60 seconds for processing</li>
             </ol>
+            
+            <h3>Option B: Live Recording</h3>
+            <ol>
+                <li>Click <strong>"New Conversation"</strong></li>
+                <li>Select <strong>"Live Record"</strong></li>
+                <li>Allow microphone access when prompted</li>
+                <li>Click the record button and speak a sample conversation</li>
+                <li>Click stop when done</li>
+                <li>Enter a name and click <strong>"Submit"</strong></li>
+            </ol>
+            
+            <h3>Option C: Generate Synthetic Audio</h3>
+            <ol>
+                <li>Click <strong>"Generate Audio"</strong> in the sidebar</li>
+                <li>Add dialogue lines for Doctor and Patient</li>
+                <li>Click <strong>"Generate & Download"</strong></li>
+                <li>Use the downloaded file with Option A</li>
+            </ol>
+
+            <h2>6. View Results</h2>
+            <p>After submitting, wait 30-60 seconds for processing. Then click on your conversation to see:</p>
+            <ul>
+                <li><strong>Left Panel:</strong> Transcript with speaker labels (Clinician/Patient)</li>
+                <li><strong>Right Panel:</strong> AI-generated SOAP note</li>
+                <li><strong>Highlighted Terms:</strong> Medical entities detected by Comprehend Medical</li>
+            </ul>
 
             <div class="callout">
                 <span class="callout-title">✅ Success Criteria</span>
                 You should see:
                 <ul>
-                    <li><strong>Left Panel:</strong> The transcript with speaker labels (Doctor/Patient)</li>
-                    <li><strong>Right Panel:</strong> AI-generated SOAP note (Subjective, Objective, Assessment, Plan)</li>
+                    <li>Transcript with <strong>speaker diarization</strong> (who said what)</li>
+                    <li>SOAP note with <strong>Subjective, Objective, Assessment, Plan</strong> sections</li>
+                    <li>Medical terms <strong>highlighted</strong> (medications, conditions, etc.)</li>
                 </ul>
             </div>
 
-            <h2>6. Stop the Server</h2>
+            <h2>7. Stop the Server</h2>
             <p>When done testing, press <code>Ctrl + C</code> in your terminal to stop the server.</p>
         `,
         prev: 'configure',
@@ -504,15 +577,52 @@ VITE_IDENTITY_POOL_ID=ap-southeast-2:12345678-abcd-efgh-ijkl-123456789012</code>
         html: `
             <h2>Common Issues & Solutions</h2>
 
+            <h3>❌ npm install fails with ERESOLVE peer dependency error</h3>
+            <p><strong>Cause:</strong> React 19 conflicts with Cloudscape components which expect React 16-18.</p>
+            <p><strong>Fix:</strong> Use the legacy peer deps flag:</p>
+            <pre><code>npm install --legacy-peer-deps</code></pre>
+
+            <hr>
+
+            <h3>❌ npm install fails with EACCES permission denied</h3>
+            <p><strong>Cause:</strong> npm cache contains root-owned files (usually from using <code>sudo npm install -g</code>).</p>
+            <p><strong>Fix:</strong> Reset npm cache ownership:</p>
+            <pre><code>sudo chown -R $(whoami) ~/.npm
+npm install --legacy-peer-deps</code></pre>
+
+            <hr>
+
+            <h3>❌ CDK install fails with EACCES permission denied</h3>
+            <p><strong>Cause:</strong> Global npm packages require elevated permissions on macOS/Linux.</p>
+            <p><strong>Fix:</strong> Use sudo:</p>
+            <pre><code>sudo npm install -g aws-cdk</code></pre>
+
+            <hr>
+
+            <h3>❌ Password rejected during sign-up</h3>
+            <p><strong>Cause:</strong> Cognito enforces strict password requirements.</p>
+            <p><strong>Fix:</strong> Ensure your password has:</p>
+            <ul>
+                <li>At least 8 characters</li>
+                <li>At least one uppercase letter (A-Z)</li>
+                <li>At least one lowercase letter (a-z)</li>
+                <li>At least one number (0-9)</li>
+                <li>At least one special character (!@#$%^&*)</li>
+            </ul>
+            <p>Example valid password: <code>MyPass123!</code></p>
+
+            <hr>
+
             <h3>❌ "Access Denied" or "Not Authorized" errors</h3>
             <p><strong>Cause:</strong> Bedrock model access not enabled.</p>
-            <p><strong>Fix:</strong> Go back to Module 2 and ensure you've enabled Claude model access in the Bedrock console.</p>
+            <p><strong>Fix:</strong> Go back to Module 2 and ensure you've enabled Claude model access in the Bedrock console for the Sydney (ap-southeast-2) region.</p>
 
             <hr>
 
             <h3>❌ "User pool does not exist" error</h3>
             <p><strong>Cause:</strong> Wrong values in <code>.env.local</code>.</p>
-            <p><strong>Fix:</strong> Double-check your CDK outputs match exactly. No extra spaces or quotes.</p>
+            <p><strong>Fix:</strong> Double-check your CDK outputs match exactly. No extra spaces or quotes. Run this to see outputs again:</p>
+            <pre><code>aws cloudformation describe-stacks --stack-name ClinicalAssistantStack --query "Stacks[0].Outputs" --output table --region ap-southeast-2</code></pre>
 
             <hr>
 
@@ -533,9 +643,10 @@ VITE_IDENTITY_POOL_ID=ap-southeast-2:12345678-abcd-efgh-ijkl-123456789012</code>
             <p><strong>Cause:</strong> Bedrock API error (usually permissions).</p>
             <p><strong>Fix:</strong></p>
             <ol>
-                <li>Open browser Developer Tools (F12)</li>
+                <li>Open browser Developer Tools (F12 or Cmd+Option+I on Mac)</li>
                 <li>Check the Console tab for errors</li>
                 <li>Verify Bedrock model access is "Access granted" in AWS Console</li>
+                <li>Ensure you're checking the Sydney (ap-southeast-2) region</li>
             </ol>
 
             <hr>
@@ -548,10 +659,40 @@ cdk deploy --force</code></pre>
 
             <hr>
 
+            <h3>❌ Verification email not received</h3>
+            <p><strong>Cause:</strong> Email may be in spam/junk folder, or email address typo.</p>
+            <p><strong>Fix:</strong></p>
+            <ol>
+                <li>Check your spam/junk folder</li>
+                <li>Wait a few minutes - sometimes there's a delay</li>
+                <li>Try signing up again with correct email</li>
+                <li>Check AWS SES sending limits if using a new AWS account</li>
+            </ol>
+
+            <hr>
+
             <h3>❌ Windows: "execution of scripts is disabled"</h3>
             <p><strong>Cause:</strong> PowerShell execution policy.</p>
             <p><strong>Fix:</strong> Run PowerShell as Administrator and execute:</p>
             <pre><code>Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser</code></pre>
+
+            <hr>
+
+            <h3>❌ Transcription job stuck in "IN_PROGRESS"</h3>
+            <p><strong>Cause:</strong> Large audio files take longer, or there may be an issue with the audio format.</p>
+            <p><strong>Fix:</strong></p>
+            <ol>
+                <li>Wait up to 5 minutes for longer audio files</li>
+                <li>Ensure audio is in a supported format (.wav, .mp3, .m4a, .flac)</li>
+                <li>Try with a shorter audio clip (under 2 minutes)</li>
+                <li>Check AWS Transcribe console for job status</li>
+            </ol>
+
+            <hr>
+
+            <h3>❌ "Region not supported" or service errors</h3>
+            <p><strong>Cause:</strong> Some services may have regional limitations.</p>
+            <p><strong>Fix:</strong> Ensure all your AWS Console views and CLI commands use <code>ap-southeast-2</code> (Sydney).</p>
 
             <hr>
 
@@ -560,6 +701,27 @@ cdk deploy --force</code></pre>
             <pre><code>cd infrastructure
 cdk destroy</code></pre>
             <p>Type <code>y</code> when prompted to confirm deletion.</p>
+            
+            <p>This removes:</p>
+            <ul>
+                <li>Cognito User Pool and Identity Pool</li>
+                <li>S3 bucket (and all uploaded files)</li>
+                <li>IAM roles</li>
+            </ul>
+
+            <hr>
+
+            <h2>Verify AWS Services</h2>
+            <p>You can verify the required services are working with these CLI commands:</p>
+            
+            <h3>Test Transcribe Medical:</h3>
+            <pre><code>aws transcribe list-medical-transcription-jobs --region ap-southeast-2</code></pre>
+            
+            <h3>Test Comprehend Medical:</h3>
+            <pre><code>aws comprehendmedical detect-entities-v2 --text "Patient has diabetes" --region ap-southeast-2</code></pre>
+            
+            <h3>Test Bedrock (Claude):</h3>
+            <pre><code>aws bedrock list-foundation-models --by-provider Anthropic --region ap-southeast-2</code></pre>
 
             <hr>
 
