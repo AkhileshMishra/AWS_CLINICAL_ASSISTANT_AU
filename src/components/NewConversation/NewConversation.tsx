@@ -119,7 +119,7 @@ export default function NewConversation() {
 
         try {
             const result = await startJob(jobName, s3Uri);
-            if (result?.MedicalTranscriptionJob?.MedicalTranscriptionJobStatus) {
+            if (result?.MedicalTranscriptionJob?.TranscriptionJobStatus) {
                 updateProgressBar({
                     id: `New Job: ${jobName}`,
                     type: 'success',

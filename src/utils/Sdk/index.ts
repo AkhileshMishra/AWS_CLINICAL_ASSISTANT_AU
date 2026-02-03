@@ -43,7 +43,7 @@ function getAmplifyRegion() {
  * @returns string
  */
 function getConfigRegion() {
-    return apiConfig.region;
+    return apiConfig.region || import.meta.env.VITE_AWS_REGION || 'ap-southeast-2';
 }
 
 /**

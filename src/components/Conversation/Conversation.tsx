@@ -45,13 +45,8 @@ export default function Conversation() {
         setHighlightId,
     ] = useAudio();
 
-    // Fake job details for UI compatibility
-    const jobDetails: any = {
-        MedicalScribeJobName: conversationName,
-        MedicalScribeJobStatus: 'COMPLETED',
-        StartTime: new Date(),
-        CompletionTime: new Date()
-    };
+    // Job details - will be populated from actual job data
+    const [jobDetails, setJobDetails] = useState<any>(null);
 
     useEffect(() => {
         async function loadData(name: string) {
@@ -61,6 +56,24 @@ export default function Conversation() {
                 const transcriptKey = `transcripts/${name}.json`;
 
                 console.log("Loading conversation:", name);
+
+                // 0. Get job details from Transcribe to find audio URL
+                const { TranscribeClient, GetMedicalTranscriptionJobCommand } = await import('@aws-sdk/client-transcribe');
+                const { getAmplifyCredentials } = await import('@/utils/Sdk');
+                const creds = await getAmplifyCredentials();
+                const transcribeClient = new TranscribeClient({ region: 'ap-southeast-2', credentials: creds });
+                const jobResponse = await transcribeClient.send(new GetMedicalTranscriptionJobCommand({
+                    MedicalTranscriptionJobName: name
+                }));
+                
+                // Set job details for audio player
+                setJobDetails({
+                    MedicalScribeJobName: name,
+                    MedicalScribeJobStatus: jobResponse.MedicalTranscriptionJob?.TranscriptionJobStatus,
+                    StartTime: jobResponse.MedicalTranscriptionJob?.StartTime,
+                    CompletionTime: jobResponse.MedicalTranscriptionJob?.CompletionTime,
+                    Media: jobResponse.MedicalTranscriptionJob?.Media
+                });
 
                 // 1. Fetch Raw Transcript from S3
                 const transcriptRsp = await getObject({ Bucket: bucket, Key: transcriptKey });
