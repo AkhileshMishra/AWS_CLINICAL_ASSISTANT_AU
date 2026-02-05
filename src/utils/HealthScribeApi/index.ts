@@ -1,4 +1,3 @@
-
 import {
     TranscribeClient,
     StartMedicalTranscriptionJobCommand,
@@ -70,8 +69,6 @@ export const startJob = async (jobName: string, s3Uri: string) => {
     });
 };
 
-// Compatibility wrapper for old NewConversation usage if needed, 
-// though we updated NewConversation to use startJob.
 export const startMedicalScribeJob = async (props: StartMedicalScribeJobRequest) => {
     return startJob(props.MedicalScribeJobName, props.Media.MediaFileUri);
 };
@@ -80,17 +77,20 @@ export const startMedicalScribeJob = async (props: StartMedicalScribeJobRequest)
 export const generateClinicalNote = async (transcriptText: string) => {
     const { bedrock } = await getClients();
 
-    const prompt = `Human: You are an expert medical scribe. 
-    Summarize the following doctor-patient transcript into a structured SOAP note.
-    
-    Transcript:
-    ${transcriptText}
-    
-    Output Instructions:
-    Return ONLY a valid JSON object. Do not add markdown formatting.
-    The JSON must use exactly these keys: "Subjective", "Objective", "Assessment", "Plan".
-    
-    Assistant:`;
+    const prompt = `You are an expert medical scribe. Analyze this doctor-patient conversation and create a SOAP note.
+
+<transcript>
+${transcriptText}
+</transcript>
+
+Create a clinical SOAP note with these sections:
+- Subjective: Patient's reported symptoms, history, and concerns
+- Objective: Physical examination findings, vital signs, observations
+- Assessment: Clinical assessment and differential diagnoses
+- Plan: Treatment plan, medications, follow-up instructions
+
+Respond with ONLY a JSON object in this exact format:
+{"Subjective": "...", "Objective": "...", "Assessment": "...", "Plan": "..."}`;
 
     const command = new InvokeModelCommand({
         modelId: "anthropic.claude-3-haiku-20240307-v1:0",
@@ -98,7 +98,7 @@ export const generateClinicalNote = async (transcriptText: string) => {
         accept: "application/json",
         body: JSON.stringify({
             anthropic_version: "bedrock-2023-05-31",
-            max_tokens: 2000,
+            max_tokens: 4000,
             messages: [{ role: "user", content: prompt }]
         })
     });
@@ -108,7 +108,7 @@ export const generateClinicalNote = async (transcriptText: string) => {
         const responseBody = JSON.parse(new TextDecoder().decode(response.body));
         let textContent = responseBody.content[0].text;
         
-        console.log("Raw Bedrock response:", textContent);
+        console.log("Raw Bedrock response:", textContent.substring(0, 500));
         
         // Strip markdown code blocks if present
         textContent = textContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
@@ -120,24 +120,19 @@ export const generateClinicalNote = async (transcriptText: string) => {
             textContent = textContent.slice(start, end + 1);
         }
         
-        try {
-            return JSON.parse(textContent);
-        } catch (parseErr) {
-            console.error("JSON parse failed, returning raw text as Subjective");
-            return { 
-                Subjective: textContent,
-                Objective: "Unable to parse structured response",
-                Assessment: "",
-                Plan: ""
-            };
-        }
+        return JSON.parse(textContent);
     } catch (e) {
         console.error("Bedrock Error:", e);
-        return { Error: "Failed to generate summary. Please check logs." };
+        return { 
+            Subjective: "Error generating clinical note",
+            Objective: "Please try again",
+            Assessment: "",
+            Plan: ""
+        };
     }
 };
 
-// 4. List Jobs (Compatibility Layer)
+// 4. List Jobs
 export const listHealthScribeJobs = async (props: ListHealthScribeJobsProps) => {
     const { transcribe } = await getClients();
 
@@ -147,7 +142,6 @@ export const listHealthScribeJobs = async (props: ListHealthScribeJobsProps) => 
         NextToken: props.NextToken,
     };
 
-    // Filter by status if provided and not 'ALL'
     if (props.Status && props.Status !== 'ALL') {
         input.Status = props.Status;
     }
@@ -156,8 +150,6 @@ export const listHealthScribeJobs = async (props: ListHealthScribeJobsProps) => 
 
     try {
         const response = await transcribe.send(command);
-
-        // Map to structure expected by UI
         const summaries = response.MedicalTranscriptionJobSummaries?.map((job: any) => ({
             MedicalScribeJobName: job.MedicalTranscriptionJobName,
             CreationTime: job.CreationTime,
@@ -186,7 +178,7 @@ export const deleteHealthScribeJob = async (props: DeleteHealthScribeJobProps) =
     return await transcribe.send(command);
 };
 
-// 6. Get Job (needed for Debug.tsx)
+// 6. Get Job
 export const getHealthScribeJob = async (props: GetHealthScribeJobProps) => {
     const { transcribe } = await getClients();
     const command = new GetMedicalTranscriptionJobCommand({
@@ -194,14 +186,12 @@ export const getHealthScribeJob = async (props: GetHealthScribeJobProps) => {
     });
     try {
         const response = await transcribe.send(command);
-        // Map to MedicalScribeJob structure expected by legacy components
         return {
             MedicalScribeJob: {
                 MedicalScribeJobName: response.MedicalTranscriptionJob?.MedicalTranscriptionJobName,
                 MedicalScribeJobStatus: response.MedicalTranscriptionJob?.TranscriptionJobStatus,
                 StartTime: response.MedicalTranscriptionJob?.StartTime,
                 CompletionTime: response.MedicalTranscriptionJob?.CompletionTime,
-                // Add fake output URI to satisfy types if needed
                 MedicalScribeOutput: {
                     TranscriptFileUri: `s3://${import.meta.env.VITE_BUCKET_NAME}/transcripts/${props.MedicalScribeJobName}.json`,
                     ClinicalDocumentUri: `s3://${import.meta.env.VITE_BUCKET_NAME}/transcripts/${props.MedicalScribeJobName}_summary.json`
