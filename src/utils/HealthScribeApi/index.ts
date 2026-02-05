@@ -76,56 +76,75 @@ export const startMedicalScribeJob = async (props: StartMedicalScribeJobRequest)
 // 3. Generate Clinical Note with Bedrock
 export const generateClinicalNote = async (transcriptText: string) => {
     const { bedrock } = await getClients();
-
-    // Truncate transcript if too long (Claude has context limits)
-    const maxChars = 12000;
-    const truncatedText = transcriptText.length > maxChars 
-        ? transcriptText.substring(0, maxChars) + "..." 
-        : transcriptText;
-
-    const prompt = `You are a medical scribe. Create a SOAP note from this transcript.
+    
+    const chunkSize = 10000;
+    const chunks: string[] = [];
+    
+    // Split transcript into chunks
+    for (let i = 0; i < transcriptText.length; i += chunkSize) {
+        chunks.push(transcriptText.slice(i, i + chunkSize));
+    }
+    
+    // Process each chunk
+    const chunkResults: any[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+        const isLast = i === chunks.length - 1;
+        const prompt = `You are a medical scribe. Extract clinical information from this transcript segment (part ${i + 1} of ${chunks.length}).
 
 <transcript>
-${truncatedText}
+${chunks[i]}
 </transcript>
 
-Return ONLY this JSON (no other text):
-{"Subjective":"patient symptoms and history","Objective":"exam findings","Assessment":"diagnosis","Plan":"treatment plan"}`;
+Return ONLY valid JSON with these keys:
+{"Subjective":"symptoms, history, complaints, concerns","Objective":"exam findings, vitals, observations","Assessment":"diagnoses, conditions","Plan":"treatments, medications, follow-up"}
 
-    const command = new InvokeModelCommand({
-        modelId: "anthropic.claude-3-haiku-20240307-v1:0",
-        contentType: "application/json",
-        accept: "application/json",
-        body: JSON.stringify({
-            anthropic_version: "bedrock-2023-05-31",
-            max_tokens: 4000,
-            messages: [{ role: "user", content: prompt }]
-        })
-    });
+Include ALL medication names mentioned. If a section has no info, use empty string.`;
 
-    try {
-        const response = await bedrock.send(command);
-        const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-        let text = responseBody.content[0].text;
-        
-        // Clean up response
-        text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-        const start = text.indexOf('{');
-        const end = text.lastIndexOf('}');
-        if (start !== -1 && end > start) {
-            text = text.slice(start, end + 1);
+        const command = new InvokeModelCommand({
+            modelId: "anthropic.claude-3-haiku-20240307-v1:0",
+            contentType: "application/json",
+            accept: "application/json",
+            body: JSON.stringify({
+                anthropic_version: "bedrock-2023-05-31",
+                max_tokens: 4000,
+                messages: [{ role: "user", content: prompt }]
+            })
+        });
+
+        try {
+            const response = await bedrock.send(command);
+            const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+            let text = responseBody.content[0].text;
+            text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+            const start = text.indexOf('{');
+            const end = text.lastIndexOf('}');
+            if (start !== -1 && end > start) {
+                text = text.slice(start, end + 1);
+            }
+            chunkResults.push(JSON.parse(text));
+        } catch (e) {
+            console.error(`Chunk ${i + 1} error:`, e);
         }
-        
-        return JSON.parse(text);
-    } catch (e: any) {
-        console.error("Bedrock Error:", e);
-        return { 
-            Subjective: "Error: " + (e.message || "Failed to generate"),
-            Objective: "N/A",
-            Assessment: "N/A",
-            Plan: "Please retry"
-        };
     }
+    
+    // Merge all chunk results
+    if (chunkResults.length === 0) {
+        return { Subjective: "Error processing transcript", Objective: "", Assessment: "", Plan: "" };
+    }
+    
+    if (chunkResults.length === 1) {
+        return chunkResults[0];
+    }
+    
+    // Merge multiple chunks
+    const merged = {
+        Subjective: chunkResults.map(r => r.Subjective).filter(Boolean).join("\n"),
+        Objective: chunkResults.map(r => r.Objective).filter(Boolean).join("\n"),
+        Assessment: chunkResults.map(r => r.Assessment).filter(Boolean).join("\n"),
+        Plan: chunkResults.map(r => r.Plan).filter(Boolean).join("\n")
+    };
+    
+    return merged;
 };
 
 // 4. List Jobs
