@@ -77,20 +77,20 @@ export const startMedicalScribeJob = async (props: StartMedicalScribeJobRequest)
 export const generateClinicalNote = async (transcriptText: string) => {
     const { bedrock } = await getClients();
 
-    const prompt = `You are an expert medical scribe. Analyze this doctor-patient conversation and create a SOAP note.
+    // Truncate transcript if too long (Claude has context limits)
+    const maxChars = 12000;
+    const truncatedText = transcriptText.length > maxChars 
+        ? transcriptText.substring(0, maxChars) + "..." 
+        : transcriptText;
+
+    const prompt = `You are a medical scribe. Create a SOAP note from this transcript.
 
 <transcript>
-${transcriptText}
+${truncatedText}
 </transcript>
 
-Create a clinical SOAP note with these sections:
-- Subjective: Patient's reported symptoms, history, and concerns
-- Objective: Physical examination findings, vital signs, observations
-- Assessment: Clinical assessment and differential diagnoses
-- Plan: Treatment plan, medications, follow-up instructions
-
-Respond with ONLY a JSON object in this exact format:
-{"Subjective": "...", "Objective": "...", "Assessment": "...", "Plan": "..."}`;
+Return ONLY this JSON (no other text):
+{"Subjective":"patient symptoms and history","Objective":"exam findings","Assessment":"diagnosis","Plan":"treatment plan"}`;
 
     const command = new InvokeModelCommand({
         modelId: "anthropic.claude-3-haiku-20240307-v1:0",
@@ -106,28 +106,24 @@ Respond with ONLY a JSON object in this exact format:
     try {
         const response = await bedrock.send(command);
         const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-        let textContent = responseBody.content[0].text;
+        let text = responseBody.content[0].text;
         
-        console.log("Raw Bedrock response:", textContent.substring(0, 500));
-        
-        // Strip markdown code blocks if present
-        textContent = textContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-        
-        // Find JSON object boundaries
-        const start = textContent.indexOf('{');
-        const end = textContent.lastIndexOf('}');
-        if (start !== -1 && end !== -1 && end > start) {
-            textContent = textContent.slice(start, end + 1);
+        // Clean up response
+        text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start !== -1 && end > start) {
+            text = text.slice(start, end + 1);
         }
         
-        return JSON.parse(textContent);
-    } catch (e) {
+        return JSON.parse(text);
+    } catch (e: any) {
         console.error("Bedrock Error:", e);
         return { 
-            Subjective: "Error generating clinical note",
-            Objective: "Please try again",
-            Assessment: "",
-            Plan: ""
+            Subjective: "Error: " + (e.message || "Failed to generate"),
+            Objective: "N/A",
+            Assessment: "N/A",
+            Plan: "Please retry"
         };
     }
 };
