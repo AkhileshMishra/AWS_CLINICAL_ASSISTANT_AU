@@ -175,6 +175,10 @@ export default function Conversation() {
                 <RightPanel
                     loading={jobLoading}
                     summary={summary}
+                    transcript={transcript}
+                    highlightId={highlightId}
+                    setHighlightId={setHighlightId}
+                    wavesurfer={wavesurfer}
                 />
             </Grid>
         </ContentLayout>

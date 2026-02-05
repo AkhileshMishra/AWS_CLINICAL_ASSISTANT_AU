@@ -106,8 +106,31 @@ export const generateClinicalNote = async (transcriptText: string) => {
     try {
         const response = await bedrock.send(command);
         const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-        const textContent = responseBody.content[0].text;
-        return JSON.parse(textContent);
+        let textContent = responseBody.content[0].text;
+        
+        console.log("Raw Bedrock response:", textContent);
+        
+        // Strip markdown code blocks if present
+        textContent = textContent.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        
+        // Find JSON object boundaries
+        const start = textContent.indexOf('{');
+        const end = textContent.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            textContent = textContent.slice(start, end + 1);
+        }
+        
+        try {
+            return JSON.parse(textContent);
+        } catch (parseErr) {
+            console.error("JSON parse failed, returning raw text as Subjective");
+            return { 
+                Subjective: textContent,
+                Objective: "Unable to parse structured response",
+                Assessment: "",
+                Plan: ""
+            };
+        }
     } catch (e) {
         console.error("Bedrock Error:", e);
         return { Error: "Failed to generate summary. Please check logs." };
