@@ -251,10 +251,10 @@ git --version     # Should show 2.x</code></pre>
             <hr>
 
             <h2>3. Clone the Repository</h2>
-            <pre><code>git clone https://github.com/AkhileshMishra/AWS_CLINICAL_ASSISTANT_AU.git</code></pre>
+            <pre><code>git clone https://github.com/INFRALESS-IO/aws-health-tech-demos.git</code></pre>
 
             <h2>4. Enter the Project Directory</h2>
-            <pre><code>cd AWS_CLINICAL_ASSISTANT_AU</code></pre>
+            <pre><code>cd aws-health-tech-demos/AWS_CLINICAL_ASSISTANT_AU</code></pre>
 
             <h2>5. Verify the Structure</h2>
             <p>List the contents to confirm:</p>
@@ -727,7 +727,7 @@ cdk destroy</code></pre>
 
             <h2>Need More Help?</h2>
             <p>Check the project README or raise an issue on GitHub:</p>
-            <p><a href="https://github.com/AkhileshMishra/AWS_CLINICAL_ASSISTANT_AU/issues" target="_blank">GitHub Issues</a></p>
+            <p><a href="https://github.com/INFRALESS-IO/aws-health-tech-demos/tree/main/AWS_CLINICAL_ASSISTANT_AU/issues" target="_blank">GitHub Issues</a></p>
 
             <div class="callout">
                 <span class="callout-title">🎉 Congratulations!</span>
