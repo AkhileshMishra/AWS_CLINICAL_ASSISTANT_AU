@@ -173,7 +173,7 @@ export default function Conversation() {
                     audioReady={audioReady}
                 />
                 <RightPanel
-                    loading={jobLoading}
+                    jobLoading={jobLoading}
                     summary={summary}
                     transcript={transcript}
                     highlightId={highlightId}

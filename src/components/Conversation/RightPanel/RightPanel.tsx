@@ -1,153 +1,176 @@
-import React, { RefObject, useMemo, useState } from 'react';
-import { Container, Header, SpaceBetween, Box, ExpandableSection, Button } from '@cloudscape-design/components';
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: MIT-0
+import React, { RefObject, useCallback, useMemo, useState } from 'react';
+
+import { DetectEntitiesV2Response } from '@aws-sdk/client-comprehendmedical';
 import WaveSurfer from 'wavesurfer.js';
 
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { ExtractedHealthData } from '@/types/ComprehendMedical';
+import { ISection } from '@/types/HealthScribeSummary';
 import { ITranscriptSegment } from '@/types/HealthScribeTranscript';
-import { getInferredData } from '@/utils/ComprehendMedicalApi';
-import toTitleCase from '@/utils/toTitleCase';
+import { detectEntitiesFromComprehendMedical } from '@/utils/ComprehendMedicalApi';
 
+import LoadingContainer from '../Common/LoadingContainer';
+import ScrollingContainer from '../Common/ScrollingContainer';
 import { HighlightId } from '../types';
 import { RightPanelActions, RightPanelSettings } from './RightPanelComponents';
 import SummarizedConcepts from './SummarizedConcepts';
+import { calculateNereUnits } from './rightPanelUtils';
+import { processSummarizedSegment } from './summarizedConceptsUtils';
 
-interface RightPanelProps {
-    loading: boolean;
+type RightPanelProps = {
+    jobLoading: boolean;
     summary: any;
-    transcript?: any;
-    highlightId?: HighlightId;
-    setHighlightId?: React.Dispatch<React.SetStateAction<HighlightId>>;
-    wavesurfer?: RefObject<WaveSurfer | undefined>;
-}
+    transcript: any;
+    highlightId: HighlightId;
+    setHighlightId: React.Dispatch<React.SetStateAction<HighlightId>>;
+    wavesurfer: RefObject<WaveSurfer | undefined>;
+};
 
-export default function RightPanel({ 
-    loading, 
-    summary, 
+export default function RightPanel({
+    jobLoading,
+    summary,
     transcript,
-    highlightId = { allSegmentIds: [], selectedSegmentId: '' },
-    setHighlightId = () => {},
-    wavesurfer
+    highlightId,
+    setHighlightId,
+    wavesurfer,
 }: RightPanelProps) {
-    const [rightPanelSettingsOpen, setRightPanelSettingsOpen] = useState(false);
-    const [acceptableConfidence, setAcceptableConfidence] = useState(75);
+    const [extractingData, setExtractingData] = useState<boolean>(false);
     const [extractedHealthData, setExtractedHealthData] = useState<ExtractedHealthData[]>([]);
-    const [extractingData, setExtractingData] = useState(false);
-    const [dataExtracted, setDataExtracted] = useState(false);
+    const [rightPanelSettingsOpen, setRightPanelSettingsOpen] = useState<boolean>(false);
+    const [acceptableConfidence, setAcceptableConfidence] = useLocalStorage<number>(
+        'Insights-Comprehend-Medical-Confidence-Threshold',
+        75.0
+    );
 
-    // Build segmentById lookup from transcript
-    const segmentById = useMemo(() => {
-        if (!transcript?.Conversation?.TranscriptSegments) return {};
-        return transcript.Conversation.TranscriptSegments.reduce(
-            (acc: { [key: string]: ITranscriptSegment }, seg: ITranscriptSegment) => {
-                acc[seg.SegmentId] = seg;
-                return acc;
-            },
-            {}
-        );
+    const segmentById: { [key: string]: ITranscriptSegment } = useMemo(() => {
+        if (transcript == null) return {};
+        return transcript.Conversation?.TranscriptSegments?.reduce((acc: any, seg: ITranscriptSegment) => {
+            return { ...acc, [seg.SegmentId]: seg };
+        }, {}) || {};
     }, [transcript]);
 
-    // Convert SOAP summary to sections format for SummarizedConcepts
-    const sections = useMemo(() => {
+    // Convert Bedrock SOAP summary to HealthScribe sections format
+    const sections: ISection[] = useMemo(() => {
         if (!summary || summary.Error) return [];
         
-        const soapKeys = ['Subjective', 'Objective', 'Assessment', 'Plan'];
-        return Object.entries(summary)
-            .filter(([key]) => soapKeys.includes(key) || !['Error'].includes(key))
-            .map(([key, value]) => ({
-                SectionName: key.toUpperCase().replace(/ /g, '_'),
-                Summary: [{
-                    SummarizedSegment: String(value),
-                    EvidenceLinks: transcript?.Conversation?.TranscriptSegments?.slice(0, 1).map((s: any) => ({ SegmentId: s.SegmentId })) || []
-                }]
-            }));
-    }, [summary, transcript]);
-
-    const hasInsightSections = sections.length > 0;
-
-    // Extract health data using Comprehend Medical
-    const handleExtractHealthData = async () => {
-        if (!sections.length) return;
+        // Get first segment ID for evidence links
+        const firstSegmentId = transcript?.Conversation?.TranscriptSegments?.[0]?.SegmentId || 'seg-0';
         
-        setExtractingData(true);
-        try {
-            const extractedData: ExtractedHealthData[] = [];
-            
-            for (const section of sections) {
-                const sectionText = section.Summary.map(s => s.SummarizedSegment).join(' ');
+        const sectionOrder = ['Subjective', 'Objective', 'Assessment', 'Plan'];
+        const result: ISection[] = [];
+        
+        for (const key of sectionOrder) {
+            if (summary[key]) {
+                const content = String(summary[key]);
+                // Split by newlines or periods to create multiple summary items
+                const lines = content.split(/\n/).filter(line => line.trim());
                 
-                const [icd10, rxnorm, snomedct] = await Promise.all([
-                    getInferredData('icd10cm', sectionText).catch(() => ({ Entities: [] })),
-                    getInferredData('rxnorm', sectionText).catch(() => ({ Entities: [] })),
-                    getInferredData('snomedct', sectionText).catch(() => ({ Entities: [] }))
-                ]);
-
-                extractedData.push({
-                    SectionName: section.SectionName,
-                    ExtractedEntities: [
-                        icd10 as any,
-                        rxnorm as any,
-                        snomedct as any
-                    ].filter(e => e?.Entities?.length > 0)
+                result.push({
+                    SectionName: key.toUpperCase(),
+                    Summary: lines.map(line => ({
+                        SummarizedSegment: line.trim(),
+                        EvidenceLinks: [{ SegmentId: firstSegmentId }]
+                    }))
                 });
             }
-            
-            setExtractedHealthData(extractedData);
-            setDataExtracted(true);
-        } catch (e) {
-            console.error('Extract health data error:', e);
-        } finally {
-            setExtractingData(false);
         }
-    };
-
-    if (loading) {
-        return (
-            <Container header={<Header variant="h2">Insights</Header>}>
-                <Box textAlign="center" color="text-status-inactive">
-                    Generative AI is writing clinical notes...
-                </Box>
-            </Container>
-        );
-    }
-
-    if (!summary || summary.Error) {
-        return (
-            <Container header={<Header variant="h2">Insights</Header>}>
-                <Box textAlign="center" color="text-status-inactive">
-                    {summary?.Error || 'No summary available.'}
-                </Box>
-            </Container>
-        );
-    }
-
-    return (
-        <Container
-            header={
-                <Header
-                    variant="h2"
-                    actions={
-                        <RightPanelActions
-                            hasInsightSections={hasInsightSections}
-                            dataExtracted={dataExtracted}
-                            extractingData={extractingData}
-                            clinicalDocumentNereUnits={0}
-                            setRightPanelSettingsOpen={setRightPanelSettingsOpen}
-                            handleExtractHealthData={handleExtractHealthData}
-                        />
-                    }
-                >
-                    Insights
-                </Header>
+        
+        // Add any other keys not in SOAP
+        for (const [key, value] of Object.entries(summary)) {
+            if (!sectionOrder.includes(key) && key !== 'Error' && value) {
+                const content = String(value);
+                const lines = content.split(/\n/).filter(line => line.trim());
+                
+                result.push({
+                    SectionName: key.toUpperCase().replace(/ /g, '_'),
+                    Summary: lines.map(line => ({
+                        SummarizedSegment: line.trim(),
+                        EvidenceLinks: [{ SegmentId: transcript?.Conversation?.TranscriptSegments?.[0]?.SegmentId || 'seg-0' }]
+                    }))
+                });
             }
-        >
-            <RightPanelSettings
-                rightPanelSettingsOpen={rightPanelSettingsOpen}
-                setRightPanelSettingsOpen={setRightPanelSettingsOpen}
-                acceptableConfidence={acceptableConfidence}
-                setAcceptableConfidence={setAcceptableConfidence}
-            />
-            
-            {hasInsightSections && wavesurfer ? (
+        }
+        
+        return result;
+    }, [summary, transcript]);
+
+    const hasInsightSections: boolean = useMemo(() => {
+        return sections.length > 0;
+    }, [sections]);
+
+    const handleExtractHealthData = useCallback(async () => {
+        if (sections.length === 0) return;
+        setExtractingData(true);
+
+        const buildExtractedHealthData: ExtractedHealthData[] = [];
+        for (const section of sections) {
+            const sectionEntities: DetectEntitiesV2Response[] = [];
+            for (const summaryItem of section.Summary) {
+                const summarizedSegment = processSummarizedSegment(summaryItem.SummarizedSegment);
+                const detectedEntities = (await detectEntitiesFromComprehendMedical(
+                    summarizedSegment
+                )) as DetectEntitiesV2Response;
+                sectionEntities.push(detectedEntities);
+            }
+            buildExtractedHealthData.push({
+                SectionName: section.SectionName,
+                ExtractedEntities: sectionEntities,
+            });
+        }
+        setExtractedHealthData(buildExtractedHealthData);
+
+        setExtractingData(false);
+    }, [sections, setExtractingData, setExtractedHealthData]);
+
+    // Calculate the number of CM units (100-character segments) in the clinical document.
+    const clinicalDocumentNereUnits = useMemo(() => {
+        // Simple calculation based on sections
+        if (sections.length === 0) return 0;
+        let totalChars = 0;
+        sections.forEach(section => {
+            section.Summary.forEach(s => {
+                totalChars += processSummarizedSegment(s.SummarizedSegment).length;
+            });
+        });
+        
+        const eachSegment = sections.reduce((acc, { Summary }) => {
+            return acc + Summary.reduce((a, { SummarizedSegment }) => {
+                return a + Math.ceil(processSummarizedSegment(SummarizedSegment).length / 100);
+            }, 0);
+        }, 0);
+        
+        return {
+            eachSegment,
+            eachSection: Math.ceil(totalChars / 100),
+            allAtOnce: Math.ceil(totalChars / 100),
+        };
+    }, [sections]);
+
+    if (jobLoading || summary == null) {
+        return <LoadingContainer containerTitle="Insights" text="Loading Insights" />;
+    } else {
+        return (
+            <ScrollingContainer
+                containerTitle="Insights"
+                containerActions={
+                    <RightPanelActions
+                        hasInsightSections={hasInsightSections}
+                        dataExtracted={extractedHealthData.length > 0}
+                        extractingData={extractingData}
+                        clinicalDocumentNereUnits={clinicalDocumentNereUnits}
+                        setRightPanelSettingsOpen={setRightPanelSettingsOpen}
+                        handleExtractHealthData={handleExtractHealthData}
+                    />
+                }
+            >
+                <RightPanelSettings
+                    rightPanelSettingsOpen={rightPanelSettingsOpen}
+                    setRightPanelSettingsOpen={setRightPanelSettingsOpen}
+                    acceptableConfidence={acceptableConfidence}
+                    setAcceptableConfidence={setAcceptableConfidence}
+                />
                 <SummarizedConcepts
                     sections={sections}
                     extractedHealthData={extractedHealthData}
@@ -157,15 +180,7 @@ export default function RightPanel({
                     segmentById={segmentById}
                     wavesurfer={wavesurfer}
                 />
-            ) : (
-                <SpaceBetween size="l">
-                    {Object.entries(summary).map(([key, value]) => (
-                        <ExpandableSection key={key} headerText={toTitleCase(key)} defaultExpanded>
-                            <div style={{ whiteSpace: 'pre-wrap' }}>{String(value)}</div>
-                        </ExpandableSection>
-                    ))}
-                </SpaceBetween>
-            )}
-        </Container>
-    );
+            </ScrollingContainer>
+        );
+    }
 }

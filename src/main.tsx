@@ -1,16 +1,27 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
-import { Authenticator } from '@aws-amplify/ui-react'
-import App from './components/App/App'
-import './index.css'
-import { Amplify } from 'aws-amplify'
-import AuthContextProvider from './store/auth'
-import NotificationsContextProvider from './store/notifications'
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: MIT-0
+import React from 'react';
 
-import '@aws-amplify/ui-react/styles.css'
+import { BrowserRouter } from 'react-router-dom';
 
-// FIX: Manually configure Amplify using the environment variables from CDK
+import Box from '@cloudscape-design/components/box';
+import '@cloudscape-design/global-styles/index.css';
+
+import { Authenticator } from '@aws-amplify/ui-react';
+import { Amplify } from 'aws-amplify';
+import ReactDOM from 'react-dom/client';
+import { Toaster } from 'react-hot-toast';
+
+import AppSettingsContextProvider from '@/store/appSettings';
+import AppThemeContextProvider from '@/store/appTheme';
+import AuthContextProvider from '@/store/auth';
+import NotificationsContextProvider from '@/store/notifications';
+
+import { App } from './components';
+import './index.css';
+import '@aws-amplify/ui-react/styles.css';
+
+// Configure Amplify using the environment variables from CDK
 const authConfig = {
   Auth: {
     Cognito: {
@@ -30,16 +41,24 @@ const authConfig = {
 
 Amplify.configure(authConfig);
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Authenticator.Provider>
-      <BrowserRouter>
-        <NotificationsContextProvider>
-          <AuthContextProvider>
-            <App />
-          </AuthContextProvider>
-        </NotificationsContextProvider>
-      </BrowserRouter>
-    </Authenticator.Provider>
-  </React.StrictMode>,
-)
+const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
+root.render(
+    <React.StrictMode>
+        <BrowserRouter>
+            <Authenticator.Provider>
+                <AuthContextProvider>
+                    <AppThemeContextProvider>
+                        <AppSettingsContextProvider>
+                            <NotificationsContextProvider>
+                                <App />
+                                <Box>
+                                    <Toaster position="bottom-left" reverseOrder={false} />
+                                </Box>
+                            </NotificationsContextProvider>
+                        </AppSettingsContextProvider>
+                    </AppThemeContextProvider>
+                </AuthContextProvider>
+            </Authenticator.Provider>
+        </BrowserRouter>
+    </React.StrictMode>
+);
